@@ -4,6 +4,17 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 
 > DingLater 的代码路径不会写入钉钉文件，也没有发送已读回执的网络或界面操作。发送方是否始终保持“未读”仍需用两个账号做最终验收，项目不会把静态保证描述成端到端保证。
 
+## 下载与运行
+
+普通用户只需要下面几步：
+
+1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
+2. 下载名称类似 `DingLater-2.0.0-win-x64-portable.zip` 的 ZIP 文件。
+3. 把 ZIP 解压到一个固定文件夹，然后双击里面的 `DingLater.exe`。
+4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
+
+便携版不用安装，也不需要管理员权限。`SHA256SUMS.txt` 可以用来检查下载文件是否完整。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名；请确认文件来源可信后再运行。
+
 ## 工作原理
 
 1. 自动发现 `%APPDATA%\DingTalk\*_v3` 中当前活动账号。
@@ -29,19 +40,6 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 - 没有 HTTP/WebSocket、机器人/OpenAPI、遥测或云同步。
 
 当前只保证 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式。版本变化但结构探测仍完全匹配时可以继续运行；加密、WAL 或 schema 任一检查失败都会停止捕获并显示诊断，不会切换到注入、进程内存读取或窗口自动化。
-
-## 下载与运行
-
-### 普通用户
-
-1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
-2. 下载 `DingLater-<版本号>-win-x64-portable.zip`，例如 `DingLater-2.0.0-win-x64-portable.zip`。
-3. 将完整 ZIP 解压到一个固定目录，然后双击其中的 `DingLater.exe`。
-4. 首次启动时阅读并同意只读解析本机钉钉数据库；DingLater 会从同意时建立新消息起点，不会导入已有历史。
-
-便携版无需安装、无需管理员权限、无需导入证书或核对证书指纹。未签名程序仍可能触发 Windows SmartScreen；这是发布者信誉提示，只有受信任代码签名才能消除。下载后的 `SHA256SUMS.txt` 可用于自愿校验文件完整性。
-
-`SHA256SUMS.txt` 用于自愿校验下载完整性，不是运行前置步骤。首次运行会明确询问是否允许只读解析本机钉钉数据库，并从同意时建立新消息起点。
 
 随 Windows 登录启动使用当前用户 `HKCU\...\Run` 中唯一的 `DingLater` 值；关闭设置会删除该值。卸载时退出应用并删除解压目录即可；本地数据位于 `%LOCALAPPDATA%\DingLater`，可先在应用设置中选择“删除全部本地消息”。
 
