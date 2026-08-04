@@ -13,7 +13,16 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 3. 把 ZIP 解压到一个固定文件夹，然后双击里面的 `DingLater.exe`。
 4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
 
-便携版不用安装，也不需要管理员权限。`SHA256SUMS.txt` 可以用来检查下载文件是否完整。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名；请确认文件来源可信后再运行。
+便携版不用安装，也不需要管理员权限。最好先用 `SHA256SUMS.txt` 校验下载文件，再运行程序。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名。
+
+校验方法：把 ZIP 和 `SHA256SUMS.txt` 放在同一个文件夹，在该文件夹打开 PowerShell，运行下面的命令（文件名不同时请替换第一行）：
+
+```powershell
+$zip = ".\DingLater-2.0.0-win-x64-portable.zip"
+$expected = (Get-Content .\SHA256SUMS.txt).Trim().Split()[0].ToLower()
+$actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校验失败，请重新下载" }
+```
 
 ## 工作原理
 
