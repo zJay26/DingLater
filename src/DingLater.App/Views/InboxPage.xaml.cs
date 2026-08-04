@@ -17,6 +17,7 @@ public sealed partial class InboxPage : Page
     private bool _twoPane;
     private bool _showingDetail;
     private bool _subscribed = true;
+    private bool _compactActionsLayout;
 
     public InboxPage(MainViewModel viewModel)
     {
@@ -77,16 +78,14 @@ public sealed partial class InboxPage : Page
 
     private void RefreshVisualState()
     {
-        EmptyState.Visibility = _viewModel.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
-        DetailEmptyState.Visibility = _viewModel.SelectedConversation is null
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        RefreshEmptyState();
         QuickSnoozeButton.Content = _viewModel.QuickSnoozeText;
         var message = _viewModel.SelectedMessage;
         ActionBar.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
         var handled = _viewModel.Section == InboxSection.Handled;
         SnoozeActions.Visibility = handled ? Visibility.Collapsed : Visibility.Visible;
-        RestoreButton.Visibility = handled && message is not null ? Visibility.Visible : Visibility.Collapsed;
+        HandledActions.Visibility = handled && message is not null ? Visibility.Visible : Visibility.Collapsed;
+        UpdateResponsiveLayout();
         if (message is null)
         {
             return;
@@ -308,6 +307,29 @@ public sealed partial class InboxPage : Page
     private async void RestoreButton_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.RestoreInboxAsync(_viewModel.SelectedMessage);
 
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        var message = _viewModel.SelectedMessage;
+        if (message is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "删除这条消息？",
+            Content = "删除后无法恢复，不影响钉钉中的原消息。",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await _viewModel.DeleteAsync(message);
+        }
+    }
+
     private void MessageInfoButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: MessageCardViewModel message } anchor)
@@ -356,19 +378,58 @@ public sealed partial class InboxPage : Page
 
     private void UpdateResponsiveLayout()
     {
-        var width = XamlRoot?.Size.Width ?? ActualWidth;
-        _twoPane = width >= 1008;
-        var compactActions = width < 720;
-        SnoozeActions.Orientation = compactActions ? Orientation.Vertical : Orientation.Horizontal;
+        var windowWidth = XamlRoot?.Size.Width ?? ActualWidth;
+        var windowHeight = XamlRoot?.Size.Height ?? ActualHeight;
+        var contentWidth = ActualWidth > 0 ? ActualWidth : windowWidth;
+        _twoPane = windowWidth >= 1008;
+        var compactActions = windowWidth < 720;
+        var denseHeight = windowHeight < 600;
+        RootGrid.Padding = denseHeight
+            ? new Thickness(12)
+            : compactActions
+                ? new Thickness(16)
+                : (Thickness)Application.Current.Resources["DingPagePadding"];
+        RootGrid.RowSpacing = compactActions ? 10 : 14;
+        DetailHeader.Padding = compactActions ? new Thickness(14, 8, 14, 8) : new Thickness(18, 14, 18, 14);
+        ActionBar.Padding = compactActions ? new Thickness(10) : new Thickness(14);
+        ConfigureSnoozeActionLayout(compactActions);
         SnoozeActions.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        foreach (var control in new Control[] { QuickSnoozeButton, TomorrowButton, ExactTimeButton, HandledButton })
+        HandledActions.Orientation = Orientation.Horizontal;
+        HandledActions.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        foreach (var control in new Control[]
+                 {
+                     QuickSnoozeButton,
+                     TomorrowButton,
+                     ExactTimeButton,
+                     HandledButton,
+                     RestoreButton,
+                     DeleteButton
+                 })
         {
             control.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         }
 
+        if (_viewModel.IsEmpty)
+        {
+            _showingDetail = false;
+            ConversationColumn.Width = new GridLength(1, GridUnitType.Star);
+            DividerColumn.Width = new GridLength(0);
+            DetailColumn.Width = new GridLength(0);
+            ConversationPane.Visibility = Visibility.Collapsed;
+            PaneDivider.Visibility = Visibility.Collapsed;
+            DetailPane.Visibility = Visibility.Collapsed;
+            UnifiedEmptyState.Visibility = Visibility.Visible;
+            Grid.SetColumn(UnifiedEmptyState, 0);
+            Grid.SetColumnSpan(UnifiedEmptyState, 3);
+            return;
+        }
+
+        UnifiedEmptyState.Visibility = Visibility.Collapsed;
+
         if (_twoPane)
         {
-            ConversationColumn.Width = new GridLength(340);
+            var conversationWidth = contentWidth >= 1500 ? 400 : contentWidth >= 1120 ? 360 : 340;
+            ConversationColumn.Width = new GridLength(conversationWidth);
             DividerColumn.Width = new GridLength(1);
             DetailColumn.Width = new GridLength(1, GridUnitType.Star);
             ConversationPane.Visibility = Visibility.Visible;
@@ -384,7 +445,7 @@ public sealed partial class InboxPage : Page
 
         ConversationColumn.Width = new GridLength(1, GridUnitType.Star);
         DividerColumn.Width = new GridLength(0);
-        DetailColumn.Width = new GridLength(1, GridUnitType.Star);
+        DetailColumn.Width = new GridLength(0);
         PaneDivider.Visibility = Visibility.Collapsed;
         ConversationPane.Visibility = _showingDetail ? Visibility.Collapsed : Visibility.Visible;
         DetailPane.Visibility = _showingDetail ? Visibility.Visible : Visibility.Collapsed;
@@ -393,6 +454,72 @@ public sealed partial class InboxPage : Page
         Grid.SetColumnSpan(DetailPane, 3);
         DetailPane.CornerRadius = new CornerRadius(8);
         DetailPane.BorderThickness = new Thickness(1);
+    }
+
+    private void ConfigureSnoozeActionLayout(bool compact)
+    {
+        if (_compactActionsLayout == compact)
+        {
+            return;
+        }
+
+        _compactActionsLayout = compact;
+        SnoozeActions.ColumnDefinitions.Clear();
+        SnoozeActions.RowDefinitions.Clear();
+        if (compact)
+        {
+            SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(QuickSnoozeButton, 0);
+            Grid.SetColumn(QuickSnoozeButton, 0);
+            Grid.SetRow(TomorrowButton, 0);
+            Grid.SetColumn(TomorrowButton, 1);
+            Grid.SetRow(ExactTimeButton, 1);
+            Grid.SetColumn(ExactTimeButton, 0);
+            Grid.SetRow(HandledButton, 1);
+            Grid.SetColumn(HandledButton, 1);
+            return;
+        }
+
+        for (var index = 0; index < 4; index++)
+        {
+            SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        }
+
+        SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        foreach (var (control, column) in new (Control Control, int Column)[]
+                 {
+                     (QuickSnoozeButton, 0),
+                     (TomorrowButton, 1),
+                     (ExactTimeButton, 2),
+                     (HandledButton, 3)
+                 })
+        {
+            Grid.SetRow(control, 0);
+            Grid.SetColumn(control, column);
+        }
+    }
+
+    private void RefreshEmptyState()
+    {
+        if (!string.IsNullOrWhiteSpace(_viewModel.SearchText))
+        {
+            EmptyTitle.Text = "没有匹配的消息";
+            EmptyDescription.Text = "试试对象名、发送者或正文中的其他关键词。";
+        }
+        else
+        {
+            (EmptyTitle.Text, EmptyDescription.Text) = _viewModel.Section switch
+            {
+                InboxSection.Snoozed => ("没有稍后提醒", "设置过稍后提醒的消息会出现在这里。"),
+                InboxSection.Handled => ("还没有已处理消息", "处理过的消息会保留到清理时间。"),
+                _ => ("待处理已清空", "新消息会按会话归拢到这里。")
+            };
+        }
+
+        UnifiedEmptyState.Visibility = _viewModel.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void FadeInActionBar()

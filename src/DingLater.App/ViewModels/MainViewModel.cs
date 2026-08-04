@@ -64,9 +64,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public string SectionTitle => Section switch
     {
-        InboxSection.Snoozed => "稍后",
+        InboxSection.Snoozed => "稍后提醒",
         InboxSection.Handled => "已处理",
-        _ => "收件箱"
+        _ => "待处理"
     };
 
     public string SearchText
@@ -92,7 +92,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int SnoozedCount => _allMessages.Count(item => item.State == InboxState.Snoozed);
     public int HandledCount => _allMessages.Count(item => item.State == InboxState.Handled);
     public bool CapturePaused => Settings.CapturePaused;
-    public string CaptureActionText => CapturePaused ? "继续捕获" : "暂停捕获";
+    public string CaptureActionText => CapturePaused ? "开始捕获" : "暂停捕获";
     public int QuickSnoozeMinutes => Settings.QuickSnoozeMinutes;
     public string QuickSnoozeText => SnoozeTimeFormatter.FormatRelativeMinutes(QuickSnoozeMinutes);
 
@@ -279,6 +279,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _dispatch(() => ErrorOccurred?.Invoke(this, $"恢复失败：{exception.Message}"));
+        }
+    }
+
+    public async Task<bool> DeleteAsync(MessageCardViewModel? item)
+    {
+        if (item is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            await _inbox.DeleteAsync(item.Id).ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _dispatch(() => ErrorOccurred?.Invoke(this, $"删除失败：{exception.Message}"));
+            return false;
         }
     }
 

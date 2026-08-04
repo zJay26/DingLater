@@ -361,6 +361,23 @@ public sealed class SqliteMessageStore : IMessageStore
         }
     }
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM messages WHERE id = $id;";
+            command.Parameters.AddWithValue("$id", id.ToString("D"));
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task DeleteAllAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);

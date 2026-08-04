@@ -121,7 +121,11 @@ public static class DingTalkWalMerger
             var frameSaltTwo = BinaryPrimitives.ReadUInt32BigEndian(frame.Slice(12, 4));
             if (pageNumber == 0 || frameSaltOne != saltOne || frameSaltTwo != saltTwo)
             {
-                throw new DingTalkCaptureException("wal_frame_identity_invalid", "钉钉 WAL 在读取期间发生了轮换。");
+                // SQLite may reset a WAL without truncating its preallocated file. Frames after
+                // the new logical end then retain the previous cycle's salts. They are not part
+                // of the current log; the first identity mismatch marks the end of its valid
+                // prefix rather than a corrupt snapshot.
+                break;
             }
 
             var checksumInput = new byte[8 + DatabasePageSize];
@@ -141,7 +145,9 @@ public static class DingTalkWalMerger
                 BinaryPrimitives.ReadUInt32BigEndian(frame.Slice(20, 4)));
             if (rollingChecksum != storedFrameChecksum)
             {
-                throw new DingTalkCaptureException("wal_checksum_invalid", "钉钉 WAL 在读取期间尚未稳定。");
+                // A partially written frame (or stale preallocated tail) terminates the valid
+                // WAL prefix. Only fully checksummed commits collected below are applied.
+                break;
             }
 
             frames.Add(new WalFrame(pageNumber, databasePages, frameOffset + FrameHeaderSize));

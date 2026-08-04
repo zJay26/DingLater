@@ -28,7 +28,6 @@ public partial class App : Application
     private WindowsReminderScheduler? _reminderScheduler;
     private string? _pendingActivation;
     private bool _exiting;
-    private bool _onboarding;
 
     public App()
     {
@@ -106,7 +105,6 @@ public partial class App : Application
             }
             else if (!_inbox.Settings.OnboardingCompleted || _inbox.Settings.CaptureConsentVersion < 1)
             {
-                _onboarding = true;
                 var onboarding = new OnboardingPage(startupService, _inbox);
                 _mainWindow.SetContent(onboarding);
                 if (!await onboarding.Completion)
@@ -115,7 +113,6 @@ public partial class App : Application
                     return;
                 }
 
-                _onboarding = false;
             }
 
             _viewModel = new MainViewModel(_inbox, startupService, _mainWindow.Dispatch);
@@ -203,15 +200,7 @@ public partial class App : Application
     }
 
     private void MainWindow_CloseRequested(object? sender, EventArgs e)
-    {
-        if (_tray is not null && !_onboarding)
-        {
-            _mainWindow?.HideToTray();
-            return;
-        }
-
-        _ = ExitApplicationAsync();
-    }
+        => _ = ExitApplicationAsync();
 
     private void SingleInstance_ActivationReceived(object? sender, string activation) =>
         _mainWindow?.Dispatch(() => ProcessActivation(activation));
@@ -251,28 +240,50 @@ public partial class App : Application
         }
 
         _exiting = true;
-        _maintenanceTimer?.Stop();
-        if (_reminderScheduler is not null)
+        try
         {
-            _reminderScheduler.ReminderDue -= ReminderScheduler_ReminderDue;
-        }
+            _maintenanceTimer?.Stop();
+            _packageSmokeTimer?.Stop();
+            if (_reminderScheduler is not null)
+            {
+                _reminderScheduler.ReminderDue -= ReminderScheduler_ReminderDue;
+            }
 
-        _tray?.Dispose();
-        if (_viewModel is not null)
+            try
+            {
+                _tray?.Dispose();
+            }
+            catch
+            {
+                // Exit must continue even if the native tray window is already gone.
+            }
+
+            if (_viewModel is not null)
+            {
+                _viewModel.FontScaleChanged -= ViewModel_FontScaleChanged;
+                _viewModel.Dispose();
+            }
+
+            if (_inbox is not null)
+            {
+                try
+                {
+                    await _inbox.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch
+                {
+                    // A stuck source must not leave a background-only process behind.
+                }
+            }
+
+            _reminderScheduler?.Dispose();
+            _singleInstance?.Dispose();
+        }
+        finally
         {
-            _viewModel.FontScaleChanged -= ViewModel_FontScaleChanged;
-            _viewModel.Dispose();
+            _mainWindow?.ForceClose();
+            Exit();
         }
-
-        if (_inbox is not null)
-        {
-            await _inbox.DisposeAsync();
-        }
-
-        _reminderScheduler?.Dispose();
-        _singleInstance?.Dispose();
-        _mainWindow?.ForceClose();
-        Exit();
     }
 
     private void StartPackageSmokeTest()

@@ -23,7 +23,12 @@ public sealed partial class SettingsPage : Page
             new FontScaleOption(UiFontScale.Large, "大"),
             new FontScaleOption(UiFontScale.ExtraLarge, "特大")
         };
-        Loaded += (_, _) => RefreshControls();
+        Loaded += (_, _) =>
+        {
+            UpdateResponsiveWidth();
+            RefreshControls();
+        };
+        SizeChanged += (_, _) => UpdateResponsiveWidth();
     }
 
     internal void RefreshControls()
@@ -36,9 +41,23 @@ public sealed partial class SettingsPage : Page
         ReminderPreviewToggle.IsOn = settings.ShowReminderPreview;
         StartupToggle.IsEnabled = _viewModel.StartupAvailable;
         StartupToggle.IsOn = _viewModel.StartWithWindows;
+        ToolTipService.SetToolTip(
+            StartupToggle,
+            _viewModel.StartupAvailable ? null : "当前环境无法创建 Windows 登录启动项。");
         RetentionNumberBox.Value = settings.RetentionDays;
-        CaptureButton.Content = _viewModel.CaptureActionText;
         _updating = false;
+    }
+
+    private void UpdateResponsiveWidth()
+    {
+        var windowWidth = XamlRoot?.Size.Width ?? ActualWidth;
+        if (windowWidth <= 0)
+        {
+            return;
+        }
+
+        var navigationReserve = windowWidth >= 1008 ? 190d : 48d;
+        SettingsContent.Width = Math.Min(960d, Math.Max(320d, windowWidth - navigationReserve));
     }
 
     private async void FontScaleComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -93,12 +112,6 @@ public sealed partial class SettingsPage : Page
         {
             RefreshControls();
         }
-    }
-
-    private async void CaptureButton_Click(object sender, RoutedEventArgs e)
-    {
-        await _viewModel.ToggleCaptureAsync();
-        RefreshControls();
     }
 
     private async void RetentionNumberBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -156,7 +169,7 @@ public sealed partial class SettingsPage : Page
         {
             XamlRoot = XamlRoot,
             Title = "删除全部本地消息？",
-            Content = "DingLater 将永久删除全部消息正文、收件箱状态和稍后提醒。钉钉中的消息不会受影响；此操作无法撤销。",
+            Content = "DingLater 将永久删除全部消息正文、待处理状态和稍后提醒。钉钉中的消息不会受影响；此操作无法撤销。",
             PrimaryButtonText = "永久删除",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close

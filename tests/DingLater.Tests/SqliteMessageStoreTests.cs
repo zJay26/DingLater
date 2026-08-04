@@ -73,6 +73,23 @@ public sealed class SqliteMessageStoreTests
     }
 
     [TestMethod]
+    public async Task Delete_RemovesOnlyMatchingMessage()
+    {
+        var now = DateTimeOffset.Parse("2026-08-10T12:00:00+08:00");
+        await using var store = CreateStore();
+        await store.InitializeAsync();
+        var first = await store.AddAsync(Message("first", now) with { SourceIdentity = "delete-1" }, 7);
+        var second = await store.AddAsync(Message("second", now) with { SourceIdentity = "delete-2" }, 7);
+
+        Assert.IsTrue(await store.DeleteAsync(first.Message.Id));
+        Assert.IsFalse(await store.DeleteAsync(first.Message.Id));
+
+        var remaining = await store.ListAsync();
+        Assert.HasCount(1, remaining);
+        Assert.AreEqual(second.Message.Id, remaining[0].Id);
+    }
+
+    [TestMethod]
     public async Task CorruptDatabase_IsQuarantinedAndRecreated()
     {
         await File.WriteAllTextAsync(_database, "not-a-sqlite-database");

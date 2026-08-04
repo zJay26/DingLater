@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using DingLater.Core.Capture.DingTalkDatabase;
@@ -48,6 +49,30 @@ public sealed class DingTalkDatabaseTests
         CryptographicOperations.ZeroMemory(key);
         CryptographicOperations.ZeroMemory(plaintext);
         CryptographicOperations.ZeroMemory(encrypted);
+        CryptographicOperations.ZeroMemory(snapshot);
+    }
+
+    [TestMethod]
+    public void WalMerge_IgnoresStalePreallocatedTailAfterValidCommit()
+    {
+        var key = Encoding.ASCII.GetBytes("da8827b14e140675");
+        var basePage = CreateDatabasePage(marker: 1);
+        var committedPage = CreateDatabasePage(marker: 42);
+        var encryptedDatabase = EncryptPage(basePage, key);
+        var encryptedCommittedPage = EncryptPage(committedPage, key);
+        var wal = BuildWalWithStaleTail(encryptedCommittedPage);
+
+        var snapshot = DingTalkWalMerger.BuildSnapshot(encryptedDatabase, wal, key, out var walValid);
+
+        Assert.IsTrue(walValid);
+        Assert.AreEqual(42, snapshot[100]);
+        CollectionAssert.AreEqual("SQLite format 3\0"u8.ToArray(), snapshot[..16]);
+        CryptographicOperations.ZeroMemory(key);
+        CryptographicOperations.ZeroMemory(basePage);
+        CryptographicOperations.ZeroMemory(committedPage);
+        CryptographicOperations.ZeroMemory(encryptedDatabase);
+        CryptographicOperations.ZeroMemory(encryptedCommittedPage);
+        CryptographicOperations.ZeroMemory(wal);
         CryptographicOperations.ZeroMemory(snapshot);
     }
 
@@ -278,5 +303,87 @@ public sealed class DingTalkDatabaseTests
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COALESCE(SUM(unreadCount), 0) FROM tbconversation;";
         return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    private static byte[] CreateDatabasePage(byte marker)
+    {
+        var page = new byte[4096];
+        "SQLite format 3\0"u8.CopyTo(page);
+        page[16] = 0x10;
+        page[17] = 0x00;
+        page[18] = 2;
+        page[19] = 2;
+        page[100] = marker;
+        return page;
+    }
+
+    private static byte[] EncryptPage(byte[] page, byte[] key)
+    {
+        var encrypted = new byte[page.Length];
+        using var aes = Aes.Create();
+        aes.Key = key;
+        aes.EncryptEcb(page, encrypted, PaddingMode.None);
+        return encrypted;
+    }
+
+    private static byte[] BuildWalWithStaleTail(byte[] encryptedPage)
+    {
+        const int headerSize = 32;
+        const int frameHeaderSize = 24;
+        const uint saltOne = 0x11223344;
+        const uint saltTwo = 0x55667788;
+        var frameSize = frameHeaderSize + encryptedPage.Length;
+        var wal = new byte[headerSize + frameSize * 2];
+        BinaryPrimitives.WriteUInt32BigEndian(wal.AsSpan(0, 4), 0x377f0682);
+        BinaryPrimitives.WriteUInt32BigEndian(wal.AsSpan(4, 4), 3007000);
+        BinaryPrimitives.WriteUInt32BigEndian(wal.AsSpan(8, 4), 4096);
+        BinaryPrimitives.WriteUInt32BigEndian(wal.AsSpan(16, 4), saltOne);
+        BinaryPrimitives.WriteUInt32BigEndian(wal.AsSpan(20, 4), saltTwo);
+        var checksum = ComputeWalChecksum(wal.AsSpan(0, 24), default);
+        WriteChecksum(wal.AsSpan(24, 8), checksum);
+
+        var frame = wal.AsSpan(headerSize, frameSize);
+        BinaryPrimitives.WriteUInt32BigEndian(frame[..4], 1);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.Slice(4, 4), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.Slice(8, 4), saltOne);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.Slice(12, 4), saltTwo);
+        encryptedPage.CopyTo(frame[frameHeaderSize..]);
+        var checksumInput = new byte[8 + encryptedPage.Length];
+        frame[..8].CopyTo(checksumInput);
+        encryptedPage.CopyTo(checksumInput.AsSpan(8));
+        checksum = ComputeWalChecksum(checksumInput, checksum);
+        WriteChecksum(frame.Slice(16, 8), checksum);
+        CryptographicOperations.ZeroMemory(checksumInput);
+
+        var stale = wal.AsSpan(headerSize + frameSize, frameSize);
+        BinaryPrimitives.WriteUInt32BigEndian(stale[..4], 1);
+        BinaryPrimitives.WriteUInt32BigEndian(stale.Slice(4, 4), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(stale.Slice(8, 4), saltOne + 1);
+        BinaryPrimitives.WriteUInt32BigEndian(stale.Slice(12, 4), saltTwo + 1);
+        return wal;
+    }
+
+    private static (uint First, uint Second) ComputeWalChecksum(
+        ReadOnlySpan<byte> bytes,
+        (uint First, uint Second) initial)
+    {
+        var first = initial.First;
+        var second = initial.Second;
+        for (var offset = 0; offset < bytes.Length; offset += 8)
+        {
+            unchecked
+            {
+                first += BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(offset, 4)) + second;
+                second += BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(offset + 4, 4)) + first;
+            }
+        }
+
+        return (first, second);
+    }
+
+    private static void WriteChecksum(Span<byte> destination, (uint First, uint Second) checksum)
+    {
+        BinaryPrimitives.WriteUInt32BigEndian(destination[..4], checksum.First);
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(4, 4), checksum.Second);
     }
 }

@@ -4,54 +4,94 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <NavigationView
         x:Name="Navigation"
-        AlwaysShowHeader="False"
-        CompactModeThresholdWidth="720"
-        ExpandedModeThresholdWidth="1008"
+        AlwaysShowHeader="True"
         IsBackButtonVisible="Collapsed"
+        IsPaneToggleButtonVisible="False"
         IsSettingsVisible="True"
         FontFamily="Segoe UI Variable Text"
         FontSize="{ThemeResource DingBodyFontSize}"
-        OpenPaneLength="190"
-        PaneDisplayMode="Auto"
+        PaneDisplayMode="Top"
         SelectionChanged="Navigation_SelectionChanged">
+        <NavigationView.Header>
+            <Border
+                x:Name="CaptureStatusPanel"
+                MinHeight="52"
+                Margin="0,2,16,2"
+                Padding="14,7"
+                Background="{ThemeResource DingSurfaceBrush}"
+                BorderBrush="{ThemeResource DingDividerBrush}"
+                BorderThickness="0,0,0,1">
+                <Grid ColumnSpacing="11">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        x:Name="CaptureStatusDot"
+                        Width="10"
+                        Height="10"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource DingSuccessBrush}"
+                        CornerRadius="5" />
+                    <TextBlock
+                        x:Name="CaptureStatusText"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource DingConversationTitleStyle}"
+                        Text="{Binding StatusText}" />
+                    <Button
+                        x:Name="CaptureToggleButton"
+                        Grid.Column="2"
+                        AutomationProperties.Name="切换消息捕获状态"
+                        Click="CaptureToggleButton_Click"
+                        Content="{Binding CaptureActionText}"
+                        Style="{StaticResource DingQuietButtonStyle}" />
+                </Grid>
+            </Border>
+        </NavigationView.Header>
         <NavigationView.MenuItems>
-            <NavigationViewItem x:Name="InboxItem" Content="收件箱" Tag="Inbox">
+            <NavigationViewItem x:Name="InboxItem" Content="待处理" Tag="Inbox">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE715;" />
                 </NavigationViewItem.Icon>
                 <NavigationViewItem.InfoBadge>
-                    <InfoBadge Value="{Binding InboxCount}" />
+                    <InfoBadge x:Name="InboxBadge" Value="{Binding InboxCount}" />
                 </NavigationViewItem.InfoBadge>
             </NavigationViewItem>
-            <NavigationViewItem x:Name="SnoozedItem" Content="稍后" Tag="Snoozed">
+            <NavigationViewItem x:Name="SnoozedItem" Tag="Snoozed">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE823;" />
                 </NavigationViewItem.Icon>
-                <NavigationViewItem.InfoBadge>
-                    <InfoBadge Value="{Binding SnoozedCount}" />
-                </NavigationViewItem.InfoBadge>
+                <NavigationViewItem.Content>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock VerticalAlignment="Center" Text="稍后提醒" />
+                        <TextBlock
+                            x:Name="SnoozedCountText"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource DingSecondaryTextBrush}"
+                            Style="{StaticResource DingSecondaryTextStyle}"
+                            Text="{Binding SnoozedCount}" />
+                    </StackPanel>
+                </NavigationViewItem.Content>
             </NavigationViewItem>
-            <NavigationViewItem x:Name="HandledItem" Content="已处理" Tag="Handled">
+            <NavigationViewItem x:Name="HandledItem" Tag="Handled">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE73E;" />
                 </NavigationViewItem.Icon>
-                <NavigationViewItem.InfoBadge>
-                    <InfoBadge Value="{Binding HandledCount}" />
-                </NavigationViewItem.InfoBadge>
+                <NavigationViewItem.Content>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock VerticalAlignment="Center" Text="已处理" />
+                        <TextBlock
+                            x:Name="HandledCountText"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource DingSecondaryTextBrush}"
+                            Style="{StaticResource DingSecondaryTextStyle}"
+                            Text="{Binding HandledCount}" />
+                    </StackPanel>
+                </NavigationViewItem.Content>
             </NavigationViewItem>
         </NavigationView.MenuItems>
-        <NavigationView.PaneFooter>
-            <StackPanel Margin="8" Orientation="Horizontal" Spacing="8">
-                <FontIcon
-                    FontSize="12"
-                    Foreground="{ThemeResource DingSuccessBrush}"
-                    Glyph="&#xEA3A;" />
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Style="{StaticResource DingSecondaryTextStyle}"
-                    Text="{Binding StatusText}" />
-            </StackPanel>
-        </NavigationView.PaneFooter>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -62,7 +102,11 @@
                 Margin="12,8,12,0"
                 IsOpen="False"
                 Severity="Error" />
-            <ContentControl x:Name="PageHost" Grid.Row="1" />
+            <ContentControl
+                x:Name="PageHost"
+                Grid.Row="1"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch" />
         </Grid>
     </NavigationView>
 </Page>

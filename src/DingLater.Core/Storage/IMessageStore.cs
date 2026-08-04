@@ -23,5 +23,6 @@ public interface IMessageStore : IAsyncDisposable
     Task<IReadOnlyList<Guid>> ApplyRetentionAsync(int retentionDays, DateTimeOffset now, CancellationToken cancellationToken = default);
     Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default);
     Task SaveSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task DeleteAllAsync(CancellationToken cancellationToken = default);
 }

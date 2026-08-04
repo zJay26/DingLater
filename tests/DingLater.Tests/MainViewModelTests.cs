@@ -171,6 +171,9 @@ public sealed class MainViewModelTests
             return Task.CompletedTask;
         }
 
+        public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Messages.RemoveAll(message => message.Id == id) == 1);
+
         public Task DeleteAllAsync(CancellationToken cancellationToken = default)
         {
             Messages.Clear();

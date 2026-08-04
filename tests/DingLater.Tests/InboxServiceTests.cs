@@ -71,6 +71,38 @@ public sealed class InboxServiceTests
     }
 
     [TestMethod]
+    public async Task Delete_RemovesOnlySelectedMessage_CancelsReminder_AndRaisesChange()
+    {
+        var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");
+        var clock = new ManualTimeProvider(now);
+        var reminders = new FakeReminders();
+        var source = new FakeCaptureSource();
+        await using var service = CreateService(reminders, source, clock);
+        await service.InitializeAsync();
+        var first = await AddDirectAsync(service, source, now);
+        await source.EmitAsync(new CapturedMessage(
+            CaptureSourceKind.Synthetic,
+            now.AddMinutes(1),
+            "另一个会话",
+            "另一个人",
+            "保留正文",
+            MessageKind.Normal,
+            1,
+            "test",
+            SourceIdentity: "delete-test-2"));
+        await WaitUntilAsync(async () => (await service.ListAsync()).Count == 2);
+        var changes = 0;
+        service.InboxChanged += (_, _) => changes++;
+
+        await service.DeleteAsync(first.Id);
+
+        CollectionAssert.Contains(reminders.Cancelled, first.Id);
+        Assert.IsNull(await service.GetAsync(first.Id));
+        Assert.HasCount(1, await service.ListAsync());
+        Assert.AreEqual(1, changes);
+    }
+
+    [TestMethod]
     public async Task Maintenance_ReleasesDueMessage_AndRaisesInboxChanged()
     {
         var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");

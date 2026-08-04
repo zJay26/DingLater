@@ -21,7 +21,7 @@ internal sealed class TrayIconService : IDisposable
         openItem.Click += (_, _) => OpenPendingOrWindow();
         _pauseItem = new MenuFlyoutItem { Text = "暂停捕获" };
         _pauseItem.Click += (_, _) => PauseToggleRequested?.Invoke(this, EventArgs.Empty);
-        var exitItem = new MenuFlyoutItem { Text = "退出" };
+        var exitItem = new MenuFlyoutItem { Text = "退出 DingLater" };
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         menu.Items.Add(openItem);
         menu.Items.Add(_pauseItem);
@@ -50,7 +50,7 @@ internal sealed class TrayIconService : IDisposable
 
     internal void SetPaused(bool paused)
     {
-        _pauseItem.Text = paused ? "继续捕获" : "暂停捕获";
+        _pauseItem.Text = paused ? "开始捕获" : "暂停捕获";
         _icon.ToolTipText = paused ? "DingLater · 已暂停" : "DingLater · 捕获中";
     }
 

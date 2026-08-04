@@ -118,6 +118,18 @@ public sealed class InboxService : IAsyncDisposable
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await RequireMessageAsync(id, cancellationToken).ConfigureAwait(false);
+        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
+        if (!await _store.DeleteAsync(id, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("消息已不存在。");
+        }
+
+        InboxChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public Task<int> CountRetentionImpactAsync(int retentionDays, CancellationToken cancellationToken = default) =>
         _store.CountExpiringWhenRetentionChangesAsync(retentionDays, _timeProvider.GetLocalNow(), cancellationToken);
 
