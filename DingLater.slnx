@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/DingLater.Core/DingLater.Core.csproj" />
+  <Project Path="src/DingLater.App/DingLater.App.csproj" />
+  <Project Path="tests/DingLater.Tests/DingLater.Tests.csproj" />
+</Solution>

@@ -1,0 +1,18 @@
+<Window
+    x:Class="DingLater.App.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RootGrid" Background="{ThemeResource DingPageBackgroundBrush}">
+        <ContentControl x:Name="ContentHost">
+            <Grid>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                    <ProgressRing Width="36" Height="36" IsActive="True" />
+                    <TextBlock
+                        Style="{StaticResource DingBodyTextStyle}"
+                        Text="正在启动 DingLater"
+                        TextAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </ContentControl>
+    </Grid>
+</Window>

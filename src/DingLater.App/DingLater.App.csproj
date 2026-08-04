@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <AssemblyName>DingLater</AssemblyName>
+    <RootNamespace>DingLater.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DingLater.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DefaultLanguage>zh-CN</DefaultLanguage>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DingLater.Core\DingLater.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="[2.3.1]" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="[8.2.251219]" />
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="[2.4.1]" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyWinUIApplicationResourcesToPublish" AfterTargets="Publish">
+    <Error
+      Condition="!Exists('$(TargetDir)$(AssemblyName).pri')"
+      Text="The WinUI application resource index was not generated: $(TargetDir)$(AssemblyName).pri" />
+    <ItemGroup>
+      <_DingLaterWinUIApplicationResource Include="$(TargetDir)$(AssemblyName).pri" />
+      <_DingLaterWinUIApplicationResource Include="$(TargetDir)**\*.xbf" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_DingLaterWinUIApplicationResource)"
+      DestinationFiles="@(_DingLaterWinUIApplicationResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

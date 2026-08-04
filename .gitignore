@@ -1,0 +1,12 @@
+.tools/
+artifacts/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.pfx
+*.snk
+TestResults/
+.vs/
+__pycache__/
+*.pyc
