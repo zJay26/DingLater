@@ -50,6 +50,22 @@ public sealed class ConversationPresentationTests
         Assert.AreEqual("项目群", ConversationPresentation.GetTitle([first, second]));
     }
 
+    [TestMethod]
+    public void SnoozedMessage_ExposesExplicitReminderTime()
+    {
+        var dueAt = DateTimeOffset.Parse("2026-08-06T09:30:00+08:00");
+        var message = Stored("项目群", "甲", "正文", ConversationScope.Group) with
+        {
+            State = InboxState.Snoozed,
+            SnoozedUntil = dueAt
+        };
+
+        var card = new MessageCardViewModel(message);
+
+        Assert.IsTrue(card.HasSnoozedReminder);
+        Assert.AreEqual($"提醒时间：{dueAt.LocalDateTime:yyyy年M月d日 HH:mm}", card.SnoozedUntilText);
+    }
+
     private static StoredMessage Stored(
         string conversation,
         string sender,

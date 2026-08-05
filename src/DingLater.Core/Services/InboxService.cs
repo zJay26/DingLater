@@ -110,6 +110,40 @@ public sealed class InboxService : IAsyncDisposable
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public async Task<int> MarkAllHandledAsync(
+        InboxState currentState,
+        CancellationToken cancellationToken = default)
+    {
+        if (currentState is not InboxState.Inbox and not InboxState.Snoozed)
+        {
+            throw new ArgumentOutOfRangeException(nameof(currentState), "只能批量处理待处理或稍后提醒消息。");
+        }
+
+        if (currentState == InboxState.Snoozed)
+        {
+            var snoozedIds = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+                .Where(message => message.State == InboxState.Snoozed)
+                .Select(message => message.Id)
+                .ToList();
+            foreach (var id in snoozedIds)
+            {
+                await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        var updated = await _store.UpdateStateByStateAsync(
+            currentState,
+            InboxState.Handled,
+            _timeProvider.GetLocalNow(),
+            cancellationToken).ConfigureAwait(false);
+        if (updated > 0)
+        {
+            InboxChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        return updated;
+    }
+
     public async Task RestoreInboxAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await RequireMessageAsync(id, cancellationToken).ConfigureAwait(false);
@@ -128,6 +162,17 @@ public sealed class InboxService : IAsyncDisposable
         }
 
         InboxChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task<int> DeleteHandledAsync(CancellationToken cancellationToken = default)
+    {
+        var deleted = await _store.DeleteByStateAsync(InboxState.Handled, cancellationToken).ConfigureAwait(false);
+        if (deleted > 0)
+        {
+            InboxChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        return deleted;
     }
 
     public Task<int> CountRetentionImpactAsync(int retentionDays, CancellationToken cancellationToken = default) =>

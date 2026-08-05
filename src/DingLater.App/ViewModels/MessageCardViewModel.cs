@@ -15,7 +15,10 @@ public sealed class MessageCardViewModel(StoredMessage model)
     public string CapturedAtText => (Model.Captured.MessageAt ?? Model.Captured.CapturedAt).LocalDateTime.ToString("M月d日 HH:mm");
     public string ExactCapturedAt => (Model.Captured.MessageAt ?? Model.Captured.CapturedAt).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
     public string ExpiryText => $"{Model.ExpiresAt.LocalDateTime:M月d日 HH:mm} 自动清理";
-    public string SnoozedUntilText => Model.SnoozedUntil is null ? string.Empty : $"{Model.SnoozedUntil.Value.LocalDateTime:M月d日 HH:mm} 提醒";
+    public bool HasSnoozedReminder => Model.SnoozedUntil is not null;
+    public string SnoozedUntilText => Model.SnoozedUntil is null
+        ? string.Empty
+        : $"提醒时间：{Model.SnoozedUntil.Value.LocalDateTime:yyyy年M月d日 HH:mm}";
     public string KindLabel => Model.Captured.Kind switch
     {
         MessageKind.Mention => "提到我",

@@ -90,6 +90,28 @@ public sealed class SqliteMessageStoreTests
     }
 
     [TestMethod]
+    public async Task BulkStateOperations_AffectOnlyMatchingState()
+    {
+        var now = DateTimeOffset.Parse("2026-08-10T12:00:00+08:00");
+        await using var store = CreateStore();
+        await store.InitializeAsync();
+        var pending = await store.AddAsync(Message("pending", now) with { SourceIdentity = "bulk-1" }, 7);
+        var handled = await store.AddAsync(Message("handled", now) with { SourceIdentity = "bulk-2" }, 7);
+        var snoozed = await store.AddAsync(Message("snoozed", now) with { SourceIdentity = "bulk-3" }, 7);
+        await store.UpdateStateAsync(handled.Message.Id, InboxState.Handled, null, now);
+        await store.UpdateStateAsync(snoozed.Message.Id, InboxState.Snoozed, now.AddHours(1), now);
+
+        Assert.AreEqual(1, await store.UpdateStateByStateAsync(InboxState.Inbox, InboxState.Handled, now.AddMinutes(1)));
+        Assert.AreEqual(2, await store.DeleteByStateAsync(InboxState.Handled));
+
+        var remaining = await store.ListAsync();
+        Assert.HasCount(1, remaining);
+        Assert.IsFalse(remaining.Any(message => message.Id == pending.Message.Id));
+        Assert.AreEqual(snoozed.Message.Id, remaining[0].Id);
+        Assert.AreEqual(InboxState.Snoozed, remaining[0].State);
+    }
+
+    [TestMethod]
     public async Task CorruptDatabase_IsQuarantinedAndRecreated()
     {
         await File.WriteAllTextAsync(_database, "not-a-sqlite-database");

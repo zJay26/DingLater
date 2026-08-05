@@ -91,6 +91,39 @@ public sealed class MainViewModelTests
         Assert.AreEqual(30, viewModel.Settings.QuickSnoozeMinutes);
     }
 
+    [TestMethod]
+    public async Task BulkActions_HandlePendingAndSnoozedThenDeleteHandled()
+    {
+        var now = DateTimeOffset.Parse("2026-08-04T16:00:00+08:00");
+        var store = new MutableStore();
+        store.Messages.Add(Stored("待处理", "甲", "正文", ConversationScope.Direct, now));
+        store.Messages.Add(Stored("稍后", "乙", "正文", ConversationScope.Direct, now) with
+        {
+            State = InboxState.Snoozed,
+            SnoozedUntil = now.AddHours(1)
+        });
+        store.Messages.Add(Stored("已处理", "丙", "正文", ConversationScope.Direct, now) with
+        {
+            State = InboxState.Handled
+        });
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        await inbox.InitializeAsync();
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.RefreshAsync();
+
+        Assert.AreEqual(1, await viewModel.MarkAllHandledAsync());
+        Assert.AreEqual(0, viewModel.InboxCount);
+        Assert.AreEqual(2, viewModel.HandledCount);
+        Assert.AreEqual(1, viewModel.SnoozedCount);
+
+        Assert.AreEqual(1, await viewModel.MarkAllHandledAsync(InboxSection.Snoozed));
+        Assert.AreEqual(0, viewModel.SnoozedCount);
+        Assert.AreEqual(3, viewModel.HandledCount);
+
+        Assert.AreEqual(3, await viewModel.DeleteAllHandledAsync());
+        Assert.AreEqual(0, viewModel.HandledCount);
+    }
+
     private static StoredMessage Stored(
         string conversation,
         string sender,
@@ -147,6 +180,23 @@ public sealed class MainViewModelTests
             return Task.CompletedTask;
         }
 
+        public Task<int> UpdateStateByStateAsync(InboxState currentState, InboxState state, DateTimeOffset updatedAt, CancellationToken cancellationToken = default)
+        {
+            var updated = 0;
+            for (var index = 0; index < Messages.Count; index++)
+            {
+                if (Messages[index].State != currentState)
+                {
+                    continue;
+                }
+
+                Messages[index] = Messages[index] with { State = state, SnoozedUntil = null, UpdatedAt = updatedAt };
+                updated++;
+            }
+
+            return Task.FromResult(updated);
+        }
+
         public Task<IReadOnlyList<Guid>> ReleaseDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Guid>>([]);
 
@@ -174,6 +224,9 @@ public sealed class MainViewModelTests
 
         public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult(Messages.RemoveAll(message => message.Id == id) == 1);
+
+        public Task<int> DeleteByStateAsync(InboxState state, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Messages.RemoveAll(message => message.State == state));
 
         public Task DeleteAllAsync(CancellationToken cancellationToken = default)
         {

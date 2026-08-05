@@ -103,6 +103,43 @@ public sealed class InboxServiceTests
     }
 
     [TestMethod]
+    public async Task BulkActions_MarkPendingAndSnoozed_CancelReminders_AndDeleteHandled()
+    {
+        var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");
+        var clock = new ManualTimeProvider(now);
+        var reminders = new FakeReminders();
+        var source = new FakeCaptureSource();
+        await using var service = CreateService(reminders, source, clock);
+        await service.InitializeAsync();
+        var pending = await AddDirectAsync(service, source, now);
+        await source.EmitAsync(new CapturedMessage(
+            CaptureSourceKind.Synthetic,
+            now.AddMinutes(1),
+            "稍后会话",
+            "另一个人",
+            "稍后正文",
+            MessageKind.Normal,
+            1,
+            "test",
+            SourceIdentity: "bulk-service-2"));
+        await WaitUntilAsync(async () => (await service.ListAsync()).Count == 2);
+        var snoozed = (await service.ListAsync()).Single(message => message.Id != pending.Id);
+        await service.SnoozeAsync(snoozed.Id, now.AddHours(1));
+
+        Assert.AreEqual(1, await service.MarkAllHandledAsync(InboxState.Inbox));
+        Assert.AreEqual(InboxState.Handled, (await service.GetAsync(pending.Id))?.State);
+        Assert.AreEqual(InboxState.Snoozed, (await service.GetAsync(snoozed.Id))?.State);
+
+        Assert.AreEqual(1, await service.MarkAllHandledAsync(InboxState.Snoozed));
+        CollectionAssert.Contains(reminders.Cancelled, snoozed.Id);
+        Assert.AreEqual(InboxState.Handled, (await service.GetAsync(snoozed.Id))?.State);
+
+        Assert.AreEqual(2, await service.DeleteHandledAsync());
+        Assert.IsNull(await service.GetAsync(pending.Id));
+        Assert.IsNull(await service.GetAsync(snoozed.Id));
+    }
+
+    [TestMethod]
     public async Task Maintenance_ReleasesDueMessage_AndRaisesInboxChanged()
     {
         var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");

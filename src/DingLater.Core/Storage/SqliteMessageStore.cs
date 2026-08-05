@@ -206,6 +206,33 @@ public sealed class SqliteMessageStore : IMessageStore
         }
     }
 
+    public async Task<int> UpdateStateByStateAsync(
+        InboxState currentState,
+        InboxState state,
+        DateTimeOffset updatedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE messages
+                SET state = $state, snoozed_until_utc = NULL, updated_at_utc = $updated
+                WHERE state = $currentState;
+                """;
+            command.Parameters.AddWithValue("$state", (int)state);
+            command.Parameters.AddWithValue("$updated", ToUnix(updatedAt));
+            command.Parameters.AddWithValue("$currentState", (int)currentState);
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<Guid>> ReleaseDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -371,6 +398,23 @@ public sealed class SqliteMessageStore : IMessageStore
             command.CommandText = "DELETE FROM messages WHERE id = $id;";
             command.Parameters.AddWithValue("$id", id.ToString("D"));
             return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<int> DeleteByStateAsync(InboxState state, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM messages WHERE state = $state;";
+            command.Parameters.AddWithValue("$state", (int)state);
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {

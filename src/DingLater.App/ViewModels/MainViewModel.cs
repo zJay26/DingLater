@@ -268,6 +268,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public async Task<int> MarkAllHandledAsync(InboxSection? section = null)
+    {
+        try
+        {
+            var currentState = (section ?? Section) switch
+            {
+                InboxSection.Inbox => InboxState.Inbox,
+                InboxSection.Snoozed => InboxState.Snoozed,
+                _ => throw new InvalidOperationException("已处理分类不支持再次批量标记。")
+            };
+            var updated = await _inbox.MarkAllHandledAsync(currentState).ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+            return updated;
+        }
+        catch (Exception exception)
+        {
+            _dispatch(() => ErrorOccurred?.Invoke(this, $"批量标记失败：{exception.Message}"));
+            return 0;
+        }
+    }
+
     public async Task RestoreInboxAsync(MessageCardViewModel? item)
     {
         if (item is null)
@@ -303,6 +324,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _dispatch(() => ErrorOccurred?.Invoke(this, $"删除失败：{exception.Message}"));
             return false;
+        }
+    }
+
+    public async Task<int> DeleteAllHandledAsync()
+    {
+        try
+        {
+            var deleted = await _inbox.DeleteHandledAsync().ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+            return deleted;
+        }
+        catch (Exception exception)
+        {
+            _dispatch(() => ErrorOccurred?.Invoke(this, $"批量删除失败：{exception.Message}"));
+            return 0;
         }
     }
 

@@ -131,6 +131,8 @@ public sealed class ArchitectureGuardTests
         StringAssert.Contains(source, "Command = pauseCommand");
         StringAssert.Contains(source, "Command = exitCommand");
         StringAssert.Contains(source, "CreateDeferredCommand");
+        StringAssert.Contains(source, "LeftClickCommand = openCommand");
+        Assert.IsFalse(source.Contains("DoubleClickCommand = openCommand", StringComparison.Ordinal));
         Assert.IsFalse(source.Contains("exitItem.Click", StringComparison.Ordinal));
     }
 

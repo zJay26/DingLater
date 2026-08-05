@@ -336,19 +336,11 @@ public partial class App : Application
             VerticalAlignment = VerticalAlignment.Center
         });
         _mainWindow.ShowFromBackground();
-        var windowHidden = false;
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _packageSmokeTimer.Interval = TimeSpan.FromSeconds(1);
-        _packageSmokeTimer.IsRepeating = true;
+        _packageSmokeTimer.IsRepeating = false;
         _packageSmokeTimer.Tick += (_, _) =>
         {
-            if (!windowHidden)
-            {
-                windowHidden = true;
-                _mainWindow.Close();
-                return;
-            }
-
             _packageSmokeTimer?.Stop();
             _tray?.Dispose();
             _tray = null;

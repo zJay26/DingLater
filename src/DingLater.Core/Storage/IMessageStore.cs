@@ -17,6 +17,7 @@ public interface IMessageStore : IAsyncDisposable
     Task<IReadOnlyList<StoredMessage>> ListAsync(CancellationToken cancellationToken = default);
     Task<StoredMessage?> GetAsync(Guid id, CancellationToken cancellationToken = default);
     Task UpdateStateAsync(Guid id, InboxState state, DateTimeOffset? snoozedUntil, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
+    Task<int> UpdateStateByStateAsync(InboxState currentState, InboxState state, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Guid>> ReleaseDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Guid>> DeleteExpiredAsync(DateTimeOffset now, CancellationToken cancellationToken = default);
     Task<int> CountExpiringWhenRetentionChangesAsync(int retentionDays, DateTimeOffset now, CancellationToken cancellationToken = default);
@@ -24,5 +25,6 @@ public interface IMessageStore : IAsyncDisposable
     Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default);
     Task SaveSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<int> DeleteByStateAsync(InboxState state, CancellationToken cancellationToken = default);
     Task DeleteAllAsync(CancellationToken cancellationToken = default);
 }

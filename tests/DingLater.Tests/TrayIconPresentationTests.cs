@@ -13,7 +13,7 @@ public sealed class TrayIconPresentationTests
 
         Assert.AreEqual(string.Empty, presentation.BadgeText);
         StringAssert.Contains(presentation.ToolTipText, "暂无待处理消息");
-        StringAssert.Contains(presentation.Body, "捕获中");
+        StringAssert.Contains(presentation.Footer, "捕获中");
     }
 
     [TestMethod]
@@ -24,9 +24,10 @@ public sealed class TrayIconPresentationTests
         var presentation = TrayIconPresentationBuilder.Build(12, message, includePreview: true, paused: false);
 
         Assert.AreEqual("12", presentation.BadgeText);
-        StringAssert.Contains(presentation.Title, "12 条待处理");
+        Assert.AreEqual("共 12 条待处理", presentation.Title);
         StringAssert.Contains(presentation.Body, "研发协作群");
         StringAssert.Contains(presentation.Body, "周远：日志已定位 请查看");
+        StringAssert.Contains(presentation.Footer, "单击打开");
     }
 
     [TestMethod]
@@ -49,7 +50,18 @@ public sealed class TrayIconPresentationTests
         var presentation = TrayIconPresentationBuilder.Build(137, null, includePreview: false, paused: false);
 
         Assert.AreEqual("99+", presentation.BadgeText);
-        StringAssert.Contains(presentation.Title, "137 条待处理");
+        Assert.AreEqual("共 137 条待处理", presentation.Title);
+    }
+
+    [TestMethod]
+    public void LongPreview_IsShortenedForTrayHover()
+    {
+        var message = Stored("研发协作群", "周远", new string('很', 120));
+
+        var presentation = TrayIconPresentationBuilder.Build(2, message, includePreview: true, paused: false);
+
+        Assert.IsTrue(presentation.Body.Length <= 42 + Environment.NewLine.Length + 72);
+        Assert.IsTrue(presentation.Body.EndsWith("…", StringComparison.Ordinal));
     }
 
     private static StoredMessage Stored(string conversation, string sender, string body)

@@ -14,7 +14,8 @@ internal sealed record TrayIconPresentation(
 internal static class TrayIconPresentationBuilder
 {
     private const int ToolTipLimit = 127;
-    private const int PreviewLimit = 180;
+    private const int ConversationLimit = 42;
+    private const int PreviewLimit = 72;
 
     internal static TrayIconPresentation Build(
         int pendingCount,
@@ -29,27 +30,27 @@ internal static class TrayIconPresentationBuilder
             return new TrayIconPresentation(
                 string.Empty,
                 $"DingLater · {status} · 暂无待处理消息",
-                "DingLater",
-                $"{status} · 暂无待处理消息",
-                "双击打开 DingLater");
+                "暂无待处理消息",
+                paused ? "捕获已暂停，可打开应用重新开始。" : "正在后台捕获新消息。",
+                $"{status} · 单击打开");
         }
 
         var badge = pendingCount > 99
             ? "99+"
             : pendingCount.ToString(CultureInfo.InvariantCulture);
-        var title = $"DingLater · {pendingCount} 条待处理";
+        var title = $"共 {pendingCount} 条待处理";
         if (!includePreview || latestMessage is null)
         {
             var hidden = "消息预览已关闭，可在设置中开启。";
             return new TrayIconPresentation(
                 badge,
-                Trim($"{title}\n{hidden}", ToolTipLimit),
+                Trim($"DingLater · {title}\n{hidden}", ToolTipLimit),
                 title,
                 hidden,
-                $"{status} · 双击打开");
+                $"{status} · 单击打开");
         }
 
-        var conversation = ConversationPresentation.GetTitle([latestMessage]);
+        var conversation = Trim(Clean(ConversationPresentation.GetTitle([latestMessage])), ConversationLimit);
         var sender = Clean(latestMessage.Captured.Sender);
         var body = Clean(latestMessage.Captured.VisibleBody);
         var preview = string.IsNullOrWhiteSpace(sender)
@@ -58,10 +59,10 @@ internal static class TrayIconPresentationBuilder
         preview = Trim(string.IsNullOrWhiteSpace(preview) ? "[非文字消息]" : preview, PreviewLimit);
         return new TrayIconPresentation(
             badge,
-            Trim($"{title}\n{conversation} · {preview}", ToolTipLimit),
+            Trim($"DingLater · {title}\n{conversation} · {preview}", ToolTipLimit),
             title,
             $"{conversation}\n{preview}",
-            $"{status} · 双击打开");
+            $"{status} · 单击打开");
     }
 
     private static string Clean(string value) =>

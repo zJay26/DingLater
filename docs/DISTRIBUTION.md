@@ -3,15 +3,18 @@
 DingLater 默认发布为自包含 `win-x64` ZIP，不使用 MSIX；ZIP 同时包含 .NET 与 Windows App Runtime，不要求目标机另行安装运行时：
 
 ```powershell
-.\scripts\Build-Portable.ps1 -Configuration Release -Version 2.1.1
+.\scripts\Build-Portable.ps1 -Configuration Release -Version 2.1.2
 ```
 
-脚本执行 locked restore、Release 测试、自包含 publish、文档复制、ZIP 压缩和 SHA-256 生成。输出：
+脚本执行 locked restore、Release 测试、自包含 publish、启动冒烟检查、文档复制、ZIP 压缩和 SHA-256 生成。最新构建始终覆盖固定目录：
 
 ```text
-artifacts\release\DingLater-2.1.1-win-x64-portable.zip
-artifacts\release\SHA256SUMS.txt
+BuildOutput\DingLater.exe
+BuildOutput\DingLater-2.1.2-win-x64-portable.zip
+BuildOutput\SHA256SUMS.txt
 ```
+
+本机测试直接启动 `BuildOutput\DingLater.exe`，或双击仓库根目录的 `启动最新版本.cmd`。`artifacts` 只作为构建过程中的临时目录，脚本结束时会自动清理。
 
 用户解压后直接运行 `DingLater.exe`；没有证书导入、指纹确认、UAC 或管理员权限。ZIP 内依赖必须和 EXE 一起保留，不能只复制 EXE。
 

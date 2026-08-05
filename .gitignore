@@ -1,5 +1,6 @@
 .tools/
 artifacts/
+BuildOutput/
 **/bin/
 **/obj/
 *.user

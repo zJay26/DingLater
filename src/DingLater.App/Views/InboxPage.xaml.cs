@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using DingLater.App.ViewModels;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -70,7 +71,11 @@ public sealed partial class InboxPage : Page
             or nameof(MainViewModel.SelectedMessage)
             or nameof(MainViewModel.Section)
             or nameof(MainViewModel.IsEmpty)
-            or nameof(MainViewModel.QuickSnoozeText))
+            or nameof(MainViewModel.QuickSnoozeText)
+            or nameof(MainViewModel.InboxCount)
+            or nameof(MainViewModel.SnoozedCount)
+            or nameof(MainViewModel.HandledCount)
+            or nameof(MainViewModel.IsBusy))
         {
             RefreshVisualState();
         }
@@ -79,6 +84,7 @@ public sealed partial class InboxPage : Page
     private void RefreshVisualState()
     {
         RefreshEmptyState();
+        RefreshBulkAction();
         QuickSnoozeButton.Content = _viewModel.QuickSnoozeText;
         var message = _viewModel.SelectedMessage;
         ActionBar.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
@@ -304,6 +310,56 @@ public sealed partial class InboxPage : Page
     private async void HandledButton_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.MarkHandledAsync(_viewModel.SelectedMessage);
 
+    private async void BulkActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        var section = _viewModel.Section;
+        var count = section switch
+        {
+            InboxSection.Inbox => _viewModel.InboxCount,
+            InboxSection.Snoozed => _viewModel.SnoozedCount,
+            InboxSection.Handled => _viewModel.HandledCount,
+            _ => 0
+        };
+        if (count == 0)
+        {
+            return;
+        }
+
+        if (section == InboxSection.Handled)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = $"删除全部 {count} 条已处理消息？",
+                Content = "删除后无法恢复，不影响钉钉中的原消息。",
+                PrimaryButtonText = "全部删除",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+
+        BulkActionButton.IsEnabled = false;
+        try
+        {
+            if (section is InboxSection.Inbox or InboxSection.Snoozed)
+            {
+                await _viewModel.MarkAllHandledAsync(section);
+            }
+            else
+            {
+                await _viewModel.DeleteAllHandledAsync();
+            }
+        }
+        finally
+        {
+            RefreshBulkAction();
+        }
+    }
+
     private async void RestoreButton_Click(object sender, RoutedEventArgs e) =>
         await _viewModel.RestoreInboxAsync(_viewModel.SelectedMessage);
 
@@ -384,6 +440,7 @@ public sealed partial class InboxPage : Page
         _twoPane = windowWidth >= 1008;
         var compactActions = windowWidth < 720;
         var denseHeight = windowHeight < 600;
+        BulkActionLabel.Visibility = windowWidth < 720 ? Visibility.Collapsed : Visibility.Visible;
         RootGrid.Padding = denseHeight
             ? new Thickness(12)
             : compactActions
@@ -521,6 +578,32 @@ public sealed partial class InboxPage : Page
 
         UnifiedEmptyState.Visibility = _viewModel.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private void RefreshBulkAction()
+    {
+        var handled = _viewModel.Section == InboxSection.Handled;
+        var count = _viewModel.Section switch
+        {
+            InboxSection.Inbox => _viewModel.InboxCount,
+            InboxSection.Snoozed => _viewModel.SnoozedCount,
+            InboxSection.Handled => _viewModel.HandledCount,
+            _ => 0
+        };
+        BulkActionButton.Visibility = Visibility.Visible;
+        BulkActionButton.IsEnabled = count > 0 && !_viewModel.IsBusy;
+        BulkActionIcon.Glyph = handled ? "\uE74D" : "\uE73E";
+        BulkActionLabel.Text = handled ? "全部删除" : "全部标为已处理";
+        BulkActionButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            handled ? "DingDangerBrush" : "DingTextBrush"];
+        var action = handled ? "删除" : "标为已处理";
+        AutomationProperties.SetName(BulkActionButton, $"将全部 {count} 条消息{action}");
+        ToolTipService.SetToolTip(
+            BulkActionButton,
+            count > 0 ? $"将本分类中的全部 {count} 条消息{action}" : $"没有可{action}的消息");
+    }
+
+    public static Visibility BoolToVisibility(bool value) =>
+        value ? Visibility.Visible : Visibility.Collapsed;
 
     private void FadeInActionBar()
     {

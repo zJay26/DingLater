@@ -197,22 +197,34 @@ def save_ico(path: Path, render: Callable[..., Image.Image]) -> None:
     )
 
 
-def badge_background(*, attention: bool) -> Image.Image:
+def badge_background(*, wide: bool) -> Image.Image:
     size = 128
-    image = VARIANTS[ACTIVE_VARIANT](size, attention=attention)
+    image = VARIANTS[ACTIVE_VARIANT](size)
     scale = 4
     large = image.resize((size * scale, size * scale), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(large)
-    cx, cy, radius = 102, 26, 24
-    draw.ellipse(
-        tuple(int(value * scale) for value in (cx - radius, cy - radius, cx + radius, cy + radius)),
-        fill=WHITE,
-    )
-    inner = radius - 3
-    draw.ellipse(
-        tuple(int(value * scale) for value in (cx - inner, cy - inner, cx + inner, cy + inner)),
-        fill=BADGE_RED,
-    )
+    if wide:
+        draw.rounded_rectangle(
+            tuple(int(value * scale) for value in (54, 0, 128, 58)),
+            radius=29 * scale,
+            fill=WHITE,
+        )
+        draw.rounded_rectangle(
+            tuple(int(value * scale) for value in (58, 4, 124, 54)),
+            radius=25 * scale,
+            fill=BADGE_RED,
+        )
+    else:
+        cx, cy, radius = 100, 28, 28
+        draw.ellipse(
+            tuple(int(value * scale) for value in (cx - radius, cy - radius, cx + radius, cy + radius)),
+            fill=WHITE,
+        )
+        inner = radius - 4
+        draw.ellipse(
+            tuple(int(value * scale) for value in (cx - inner, cy - inner, cx + inner, cy + inner)),
+            fill=BADGE_RED,
+        )
     return large.resize((size, size), Image.Resampling.LANCZOS)
 
 
@@ -262,8 +274,9 @@ def main() -> None:
     save_ico(ASSETS / "DingLater.ico", active)
     save_ico(ASSETS / "DingLaterTray.ico", active)
 
-    badge_background(attention=False).save(ASSETS / "DingLaterTrayBadge.png")
-    badge_background(attention=True).save(ASSETS / "DingLaterTrayBadgeAttention.png")
+    badge_background(wide=False).save(ASSETS / "DingLaterTrayBadge.png")
+    badge_background(wide=True).save(ASSETS / "DingLaterTrayBadgeWide.png")
+    Image.new("RGBA", (128, 128), (0, 0, 0, 0)).save(ASSETS / "DingLaterTrayTransparent.png")
 
     for name, render in VARIANTS.items():
         render(256).save(CANDIDATES / f"{name}.png")

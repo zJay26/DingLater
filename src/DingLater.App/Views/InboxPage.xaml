@@ -2,6 +2,7 @@
     x:Class="DingLater.App.Views.InboxPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DingLater.App.Views"
     xmlns:vm="using:DingLater.App.ViewModels"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
@@ -18,14 +19,27 @@
         <Grid ColumnSpacing="14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource DingPageTitleStyle}" Text="{Binding SectionTitle}" />
+            <Button
+                x:Name="BulkActionButton"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="批量操作"
+                Click="BulkActionButton_Click"
+                Style="{StaticResource DingQuietButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <FontIcon x:Name="BulkActionIcon" FontSize="15" />
+                    <TextBlock x:Name="BulkActionLabel" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
             <AutoSuggestBox
                 x:Name="SearchBox"
-                Grid.Column="1"
+                Grid.Column="2"
                 MaxWidth="380"
-                MinWidth="220"
+                MinWidth="180"
                 HorizontalAlignment="Right"
                 AutomationProperties.Name="搜索消息"
                 FontFamily="Segoe UI Variable Text"
@@ -171,6 +185,7 @@
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Grid ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
@@ -203,8 +218,32 @@
                                                 <FontIcon Glyph="&#xE712;" />
                                             </Button>
                                         </Grid>
-                                        <TextBlock
+                                        <Border
                                             Grid.Row="1"
+                                            Margin="0,2,0,1"
+                                            Padding="9,5"
+                                            HorizontalAlignment="Left"
+                                            AutomationProperties.Name="{x:Bind SnoozedUntilText}"
+                                            Background="{ThemeResource DingAccentSoftBrush}"
+                                            BorderBrush="{ThemeResource DingAccentBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasSnoozedReminder)}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon
+                                                    FontSize="14"
+                                                    Foreground="{ThemeResource DingAccentBrush}"
+                                                    Glyph="&#xE823;" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{ThemeResource DingAccentBrush}"
+                                                    FontWeight="SemiBold"
+                                                    Style="{StaticResource DingBodyTextStyle}"
+                                                    Text="{x:Bind SnoozedUntilText}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock
+                                            Grid.Row="2"
                                             Style="{StaticResource DingBodyTextStyle}"
                                             Text="{x:Bind Body}" />
                                     </Grid>
