@@ -89,6 +89,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsEmpty => Conversations.Count == 0;
     public int InboxCount => _allMessages.Count(item => item.State == InboxState.Inbox);
+    public StoredMessage? LatestInboxMessage => _allMessages
+        .Where(item => item.State == InboxState.Inbox)
+        .OrderByDescending(ConversationPresentation.GetMessageTime)
+        .FirstOrDefault();
     public int SnoozedCount => _allMessages.Count(item => item.State == InboxState.Snoozed);
     public int HandledCount => _allMessages.Count(item => item.State == InboxState.Handled);
     public bool CapturePaused => Settings.CapturePaused;
@@ -476,6 +480,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(InboxCount));
+        OnPropertyChanged(nameof(LatestInboxMessage));
         OnPropertyChanged(nameof(SnoozedCount));
         OnPropertyChanged(nameof(HandledCount));
     }

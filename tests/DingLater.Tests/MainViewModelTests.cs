@@ -27,6 +27,7 @@ public sealed class MainViewModelTests
         Assert.HasCount(2, viewModel.Conversations);
         Assert.AreEqual("研发协作群", viewModel.Conversations[0].Title);
         Assert.AreEqual("毛俊翔", viewModel.Conversations[1].Title);
+        Assert.AreEqual(groupNew.Id, viewModel.LatestInboxMessage?.Id);
         viewModel.SelectedConversation = viewModel.Conversations[1];
         viewModel.SelectedMessage = viewModel.SelectedConversation.Messages[0];
         var selectedId = viewModel.SelectedMessage.Id;

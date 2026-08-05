@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.ComponentModel;
 #if DEBUG
 using DingLater.App.Capture;
 #endif
@@ -127,9 +128,11 @@ public partial class App : Application
                 await _viewModel.ToggleCaptureAsync();
                 _mainWindow.Dispatch(() => _tray.SetPaused(_inbox.Settings.CapturePaused));
             };
-            _tray.ExitRequested += async (_, _) => await ExitApplicationAsync();
+            _tray.ExitRequested += Tray_ExitRequested;
             _tray.MessageOpenRequested += (_, id) => _mainWindow.Dispatch(() => OpenMessage(id));
             _tray.SetPaused(_inbox.Settings.CapturePaused);
+            _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+            UpdateTrayStatus();
             _reminderScheduler.ReminderDue += ReminderScheduler_ReminderDue;
             await _inbox.RestoreReminderScheduleAsync();
 
@@ -179,6 +182,29 @@ public partial class App : Application
         RebuildShell();
     }
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(MainViewModel.InboxCount)
+            or nameof(MainViewModel.LatestInboxMessage)
+            or nameof(MainViewModel.Settings))
+        {
+            _mainWindow?.Dispatch(UpdateTrayStatus);
+        }
+    }
+
+    private void UpdateTrayStatus()
+    {
+        if (_tray is null || _viewModel is null)
+        {
+            return;
+        }
+
+        _tray.SetPendingMessages(
+            _viewModel.InboxCount,
+            _viewModel.LatestInboxMessage,
+            _viewModel.Settings.ShowReminderPreview);
+    }
+
     private static void ApplyTypography(UiFontScale scale)
     {
         scale = Enum.IsDefined(scale) ? scale : UiFontScale.Standard;
@@ -200,6 +226,9 @@ public partial class App : Application
     }
 
     private void MainWindow_CloseRequested(object? sender, EventArgs e)
+        => _ = ExitApplicationAsync();
+
+    private void Tray_ExitRequested(object? sender, EventArgs e)
         => _ = ExitApplicationAsync();
 
     private void SingleInstance_ActivationReceived(object? sender, string activation) =>
@@ -251,7 +280,9 @@ public partial class App : Application
 
             try
             {
-                _tray?.Dispose();
+                var tray = _tray;
+                _tray = null;
+                tray?.Dispose();
             }
             catch
             {
@@ -261,6 +292,7 @@ public partial class App : Application
             if (_viewModel is not null)
             {
                 _viewModel.FontScaleChanged -= ViewModel_FontScaleChanged;
+                _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
                 _viewModel.Dispose();
             }
 
@@ -294,6 +326,9 @@ public partial class App : Application
             return;
         }
 
+        _tray = new TrayIconService();
+        _tray.SetPendingMessages(3, latestMessage: null, includePreview: false);
+
         _mainWindow.SetContent(new Microsoft.UI.Xaml.Controls.TextBlock
         {
             Text = "正在验证 DingLater 便携包",
@@ -307,6 +342,8 @@ public partial class App : Application
         _packageSmokeTimer.Tick += (_, _) =>
         {
             _packageSmokeTimer?.Stop();
+            _tray?.Dispose();
+            _tray = null;
             _mainWindow.ForceClose();
             Exit();
         };

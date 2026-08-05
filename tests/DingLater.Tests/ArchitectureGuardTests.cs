@@ -116,6 +116,24 @@ public sealed class ArchitectureGuardTests
         }
     }
 
+    [TestMethod]
+    public void TrayPopupMenu_UsesCommandsInsteadOfIgnoredClickHandlers()
+    {
+        var root = FindRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "DingLater.App",
+            "Services",
+            "TrayIconService.cs"));
+
+        StringAssert.Contains(source, "Command = openCommand");
+        StringAssert.Contains(source, "Command = pauseCommand");
+        StringAssert.Contains(source, "Command = exitCommand");
+        StringAssert.Contains(source, "CreateDeferredCommand");
+        Assert.IsFalse(source.Contains("exitItem.Click", StringComparison.Ordinal));
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
