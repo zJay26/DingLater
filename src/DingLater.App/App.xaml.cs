@@ -40,7 +40,7 @@ public partial class App : Application
     {
         var commandLine = Environment.GetCommandLineArgs().Skip(1).ToArray();
         _mainWindow = new MainWindow();
-        _mainWindow.CloseRequested += MainWindow_CloseRequested;
+        _mainWindow.HideRequested += MainWindow_HideRequested;
         _mainWindow.Activate();
 
         if (commandLine.Any(arg => string.Equals(arg, "--package-smoke-test", StringComparison.OrdinalIgnoreCase)))
@@ -225,8 +225,8 @@ public partial class App : Application
         dictionaries[index] = replacement;
     }
 
-    private void MainWindow_CloseRequested(object? sender, EventArgs e)
-        => _ = ExitApplicationAsync();
+    private void MainWindow_HideRequested(object? sender, EventArgs e)
+        => _mainWindow?.HideToTray();
 
     private void Tray_ExitRequested(object? sender, EventArgs e)
         => _ = ExitApplicationAsync();
@@ -336,11 +336,19 @@ public partial class App : Application
             VerticalAlignment = VerticalAlignment.Center
         });
         _mainWindow.ShowFromBackground();
+        var windowHidden = false;
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _packageSmokeTimer.Interval = TimeSpan.FromSeconds(2);
-        _packageSmokeTimer.IsRepeating = false;
+        _packageSmokeTimer.Interval = TimeSpan.FromSeconds(1);
+        _packageSmokeTimer.IsRepeating = true;
         _packageSmokeTimer.Tick += (_, _) =>
         {
+            if (!windowHidden)
+            {
+                windowHidden = true;
+                _mainWindow.Close();
+                return;
+            }
+
             _packageSmokeTimer?.Stop();
             _tray?.Dispose();
             _tray = null;

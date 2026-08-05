@@ -54,7 +54,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    internal event EventHandler? CloseRequested;
+    internal event EventHandler? HideRequested;
 
     internal XamlRoot DialogXamlRoot => RootGrid.XamlRoot;
 
@@ -148,7 +148,7 @@ public sealed partial class MainWindow : Window
         }
 
         args.Cancel = true;
-        CloseRequested?.Invoke(this, EventArgs.Empty);
+        HideRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)

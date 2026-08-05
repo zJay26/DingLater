@@ -134,6 +134,32 @@ public sealed class ArchitectureGuardTests
         Assert.IsFalse(source.Contains("exitItem.Click", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void WindowClose_HidesToTray_WhileTrayExitStopsApplication()
+    {
+        var root = FindRepositoryRoot();
+        var windowSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "DingLater.App",
+            "Views",
+            "MainWindow.xaml.cs"));
+        var appSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "DingLater.App",
+            "App.xaml.cs"));
+
+        StringAssert.Contains(windowSource, "args.Cancel = true");
+        StringAssert.Contains(windowSource, "HideRequested?.Invoke");
+        StringAssert.Contains(appSource, "_mainWindow.HideRequested += MainWindow_HideRequested");
+        StringAssert.Contains(appSource, "private void MainWindow_HideRequested");
+        StringAssert.Contains(appSource, "=> _mainWindow?.HideToTray();");
+        StringAssert.Contains(appSource, "private void Tray_ExitRequested");
+        StringAssert.Contains(appSource, "=> _ = ExitApplicationAsync();");
+        Assert.IsFalse(appSource.Contains("MainWindow_CloseRequested", StringComparison.Ordinal));
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
