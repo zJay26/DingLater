@@ -1,4 +1,17 @@
+<div align="center">
+
 # DingLater
+
+**本地“稍后回复箱”：Windows 只读解析钉钉 V3 本地数据，Android 只读取用户授权后的新通知。**
+
+[Windows x64 下载](https://github.com/zJay26/DingLater/releases/latest) · [Android 开发版](docs/ANDROID.md) · [隐私与安全](docs/PRIVACY.md) · [兼容性与验收](docs/COMPATIBILITY.md)
+
+[![Release](https://img.shields.io/github/v/release/zJay26/DingLater?display_name=tag)](https://github.com/zJay26/DingLater/releases/latest)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows11&logoColor=white)](https://github.com/zJay26/DingLater/releases/latest)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](docs/ANDROID.md)
+
+</div>
 
 DingLater 是一个本地“稍后回复箱”，目前包含彼此独立的 Windows 客户端和 Android 0.1.0 通知版。Windows 客户端以只读方式解析当前用户的钉钉 V3 本地数据库；Android 客户端只读取用户授权后新出现的钉钉系统通知。两端都不会打开钉钉会话、发送消息或同步彼此数据。
 
