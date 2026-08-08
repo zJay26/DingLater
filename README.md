@@ -16,6 +16,20 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 
 > DingLater 的代码路径不会写入钉钉文件，也没有发送已读回执的网络或界面操作。发送方是否始终保持“未读”仍需用两个账号做最终验收，项目不会把静态保证描述成端到端保证。
 
+## 界面预览
+
+**待处理消息**
+
+![DingLater 待处理消息界面](docs/assets/dinglater-inbox.png)
+
+**稍后提醒**
+
+![DingLater 稍后提醒界面](docs/assets/dinglater-snoozed.png)
+
+**设置**
+
+![DingLater 设置界面](docs/assets/dinglater-settings.png)
+
 ## 下载与运行
 
 普通用户只需要下面几步：
