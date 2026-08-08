@@ -11,3 +11,9 @@ TestResults/
 .vs/
 __pycache__/
 *.pyc
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.idea/
+*.jks
+*.keystore

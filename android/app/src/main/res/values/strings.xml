@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DingLater</string>
+    <string name="notification_listener_label">读取钉钉通知</string>
+    <string name="reminder_channel_name">稍后提醒</string>
+    <string name="reminder_channel_description">提醒需要稍后处理的本地消息</string>
+</resources>

@@ -1,8 +1,29 @@
 # DingLater
 
-DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解析当前用户的钉钉 V3 本地数据库，把启用之后的新消息保存到独立的本地待处理列表；读取过程不会打开钉钉会话、操作窗口或向钉钉服务器发送请求。
+DingLater 是一个本地“稍后回复箱”，目前包含彼此独立的 Windows 客户端和 Android 0.1.0 通知版。Windows 客户端以只读方式解析当前用户的钉钉 V3 本地数据库；Android 客户端只读取用户授权后新出现的钉钉系统通知。两端都不会打开钉钉会话、发送消息或同步彼此数据。
 
 > DingLater 的代码路径不会写入钉钉文件，也没有发送已读回执的网络或界面操作。发送方是否始终保持“未读”仍需用两个账号做最终验收，项目不会把静态保证描述成端到端保证。
+
+## Android 0.1.0（开发版）
+
+Android 版支持 Android 10 及以上，工程位于 `android/`，包名为 `io.github.zjay26.dinglater`。它没有 `INTERNET`、Accessibility、存储读取或精确闹钟权限；正文、发送者和会话名使用 Android Keystore AES-GCM 逐字段加密，只保存在设备本地。
+
+本地构建后安装：
+
+```powershell
+.\android\Build-Debug.ps1
+adb install -r .\BuildOutput\DingLater-android-0.1.0-debug.apk
+```
+
+当前修复版 APK 的 SHA-256：
+
+```text
+5a3ec05c858c08a0ed10be8db7a126a653e54d04d67d42f7ec6c229f21410c18
+```
+
+首次打开后按界面说明开启“通知使用权”；Android 13 及以上还需单独允许 DingLater 发送提醒通知。修复版会串行处理钉钉的连续通知更新，普通单条解析失败不会再永久停止后续捕获。通知载荷可能受钉钉版本、会话通知设置和系统隐私设置影响，来源不是 `MessagingStyle` 或展开正文时，界面会显示“内容可能不完整”。
+
+详细说明见 [Android 安装与开发](docs/ANDROID.md) 和 [Android 真机验收](docs/ANDROID_TESTING.md)。Debug APK 使用开发机默认签名，更换开发机或 Debug keystore 后可能无法覆盖安装并保留旧数据。
 
 ## 下载与运行
 
