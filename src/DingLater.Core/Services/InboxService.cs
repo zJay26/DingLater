@@ -11,6 +11,7 @@ public sealed class InboxService : IAsyncDisposable
     private readonly IReadOnlyList<ICaptureSource> _sources;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _captureGate = new(1, 1);
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private AppSettings _settings = new();
     private bool _started;
 
@@ -41,36 +42,100 @@ public sealed class InboxService : IAsyncDisposable
 
     public async Task StartCaptureAsync(CancellationToken cancellationToken = default)
     {
-        if (_started || _settings.CapturePaused)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (_started || _settings.CapturePaused)
+            {
+                return;
+            }
 
-        foreach (var source in _sources)
+            var subscribedSources = new List<ICaptureSource>();
+            try
+            {
+                foreach (var source in _sources)
+                {
+                    source.BatchCaptured += OnBatchCapturedAsync;
+                    source.HealthChanged += OnHealthChanged;
+                    subscribedSources.Add(source);
+                    await source.StartAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                _started = true;
+            }
+            catch (Exception startupException)
+            {
+                var failures = new List<Exception> { startupException };
+                foreach (var source in subscribedSources.AsEnumerable().Reverse())
+                {
+                    try
+                    {
+                        await source.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        failures.Add(rollbackException);
+                    }
+                    finally
+                    {
+                        source.BatchCaptured -= OnBatchCapturedAsync;
+                        source.HealthChanged -= OnHealthChanged;
+                    }
+                }
+
+                _started = false;
+                if (failures.Count > 1)
+                {
+                    throw new AggregateException("捕获源启动失败，且部分回滚操作也未完成。", failures);
+                }
+
+                throw;
+            }
+        }
+        finally
         {
-            source.BatchCaptured += OnBatchCapturedAsync;
-            source.HealthChanged += OnHealthChanged;
-            await source.StartAsync(cancellationToken).ConfigureAwait(false);
+            _lifecycleGate.Release();
         }
-
-        _started = true;
     }
 
     public async Task StopCaptureAsync(CancellationToken cancellationToken = default)
     {
-        if (!_started)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (!_started)
+            {
+                return;
+            }
 
-        foreach (var source in _sources)
+            var failures = new List<Exception>();
+            foreach (var source in _sources.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    await source.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+                finally
+                {
+                    source.BatchCaptured -= OnBatchCapturedAsync;
+                    source.HealthChanged -= OnHealthChanged;
+                }
+            }
+
+            _started = false;
+            if (failures.Count > 0)
+            {
+                throw new AggregateException("一个或多个捕获源未能正常停止。", failures);
+            }
+        }
+        finally
         {
-            await source.StopAsync(cancellationToken).ConfigureAwait(false);
-            source.BatchCaptured -= OnBatchCapturedAsync;
-            source.HealthChanged -= OnHealthChanged;
+            _lifecycleGate.Release();
         }
-
-        _started = false;
     }
 
     public Task<IReadOnlyList<StoredMessage>> ListAsync(CancellationToken cancellationToken = default) =>
@@ -105,8 +170,8 @@ public sealed class InboxService : IAsyncDisposable
     public async Task MarkHandledAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await RequireMessageAsync(id, cancellationToken).ConfigureAwait(false);
-        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         await _store.UpdateStateAsync(id, InboxState.Handled, null, _timeProvider.GetLocalNow(), cancellationToken).ConfigureAwait(false);
+        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -119,16 +184,13 @@ public sealed class InboxService : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(currentState), "只能批量处理待处理或稍后提醒消息。");
         }
 
+        IReadOnlyList<Guid> snoozedIds = [];
         if (currentState == InboxState.Snoozed)
         {
-            var snoozedIds = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+            snoozedIds = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))
                 .Where(message => message.State == InboxState.Snoozed)
                 .Select(message => message.Id)
                 .ToList();
-            foreach (var id in snoozedIds)
-            {
-                await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
-            }
         }
 
         var updated = await _store.UpdateStateByStateAsync(
@@ -136,6 +198,14 @@ public sealed class InboxService : IAsyncDisposable
             InboxState.Handled,
             _timeProvider.GetLocalNow(),
             cancellationToken).ConfigureAwait(false);
+        if (currentState == InboxState.Snoozed)
+        {
+            foreach (var id in snoozedIds)
+            {
+                await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         if (updated > 0)
         {
             InboxChanged?.Invoke(this, EventArgs.Empty);
@@ -147,20 +217,20 @@ public sealed class InboxService : IAsyncDisposable
     public async Task RestoreInboxAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await RequireMessageAsync(id, cancellationToken).ConfigureAwait(false);
-        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         await _store.UpdateStateAsync(id, InboxState.Inbox, null, _timeProvider.GetLocalNow(), cancellationToken).ConfigureAwait(false);
+        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await RequireMessageAsync(id, cancellationToken).ConfigureAwait(false);
-        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         if (!await _store.DeleteAsync(id, cancellationToken).ConfigureAwait(false))
         {
             throw new InvalidOperationException("消息已不存在。");
         }
 
+        await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -196,13 +266,13 @@ public sealed class InboxService : IAsyncDisposable
                     && message.SnoozedUntil is { } dueAt
                     && dueAt > message.ExpiresAt)
                 {
-                    await _reminders.CancelAsync(message.Id, cancellationToken).ConfigureAwait(false);
                     await _store.UpdateStateAsync(
                         message.Id,
                         InboxState.Inbox,
                         null,
                         _timeProvider.GetLocalNow(),
                         cancellationToken).ConfigureAwait(false);
+                    await _reminders.CancelAsync(message.Id, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -242,12 +312,15 @@ public sealed class InboxService : IAsyncDisposable
 
     public async Task DeleteAllAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var message in await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+        var messageIds = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+            .Select(message => message.Id)
+            .ToList();
+        await _store.DeleteAllAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var messageId in messageIds)
         {
-            await _reminders.CancelAsync(message.Id, cancellationToken).ConfigureAwait(false);
+            await _reminders.CancelAsync(messageId, cancellationToken).ConfigureAwait(false);
         }
 
-        await _store.DeleteAllAsync(cancellationToken).ConfigureAwait(false);
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -287,14 +360,43 @@ public sealed class InboxService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await StopCaptureAsync().ConfigureAwait(false);
-        foreach (var source in _sources)
+        var failures = new List<Exception>();
+        try
         {
-            await source.DisposeAsync().ConfigureAwait(false);
+            await StopCaptureAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
         }
 
-        await _store.DisposeAsync().ConfigureAwait(false);
+        foreach (var source in _sources)
+        {
+            try
+            {
+                await source.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        try
+        {
+            await _store.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+
         _captureGate.Dispose();
+        _lifecycleGate.Dispose();
+        if (failures.Count > 0)
+        {
+            throw new AggregateException("DingLater 后台服务未能完全释放。", failures);
+        }
     }
 
     private async Task OnBatchCapturedAsync(

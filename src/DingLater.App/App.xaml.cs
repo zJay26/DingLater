@@ -27,6 +27,7 @@ public partial class App : Application
     private DispatcherQueueTimer? _maintenanceTimer;
     private DispatcherQueueTimer? _packageSmokeTimer;
     private WindowsReminderScheduler? _reminderScheduler;
+    private MessageCrypto? _messageCrypto;
     private string? _pendingActivation;
     private bool _exiting;
 
@@ -55,7 +56,13 @@ public partial class App : Application
         _singleInstance = new SingleInstanceCoordinator(demoMode ? "Demo" : null);
         if (!_singleInstance.IsPrimary)
         {
-            await _singleInstance.ForwardAsync(string.IsNullOrWhiteSpace(activation) ? "show" : activation);
+            if (!await _singleInstance.ForwardAsync(string.IsNullOrWhiteSpace(activation) ? "show" : activation))
+            {
+                await _mainWindow.ShowErrorAsync(
+                    "无法打开 DingLater",
+                    "已有实例正在运行，但本次激活未能转交。请从系统托盘打开 DingLater，或退出后重试。");
+            }
+
             _mainWindow.ForceClose();
             Exit();
             return;
@@ -79,9 +86,18 @@ public partial class App : Application
                 Path.Combine(dataRoot, "keys", "master.key"),
                 new DpapiSecretProtector());
             var masterKey = keyProvider.GetOrCreate();
-            var crypto = new MessageCrypto(masterKey);
-            CryptographicOperations.ZeroMemory(masterKey);
-            var store = new SqliteMessageStore(Path.Combine(dataRoot, "dinglater.db"), crypto);
+            MessageCrypto messageCrypto;
+            try
+            {
+                messageCrypto = new MessageCrypto(masterKey);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(masterKey);
+            }
+
+            _messageCrypto = messageCrypto;
+            var store = new SqliteMessageStore(Path.Combine(dataRoot, "dinglater.db"), messageCrypto);
             _reminderScheduler = new WindowsReminderScheduler();
 #if DEBUG
             var syntheticSource = new SyntheticCaptureSource();
@@ -159,9 +175,16 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            await _mainWindow.ShowErrorAsync(
-                "DingLater 启动失败",
-                $"{exception.GetType().Name}：{exception.Message}");
+            try
+            {
+                await _mainWindow.ShowErrorAsync(
+                    "DingLater 启动失败",
+                    $"{exception.GetType().Name}：{exception.Message}");
+            }
+            finally
+            {
+                await ExitApplicationAsync();
+            }
         }
     }
 
@@ -309,6 +332,8 @@ public partial class App : Application
             }
 
             _reminderScheduler?.Dispose();
+            _messageCrypto?.Dispose();
+            _messageCrypto = null;
             _singleInstance?.Dispose();
         }
         finally

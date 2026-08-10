@@ -362,8 +362,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public async Task<int> CountRetentionImpactAsync(int retentionDays) =>
-        await _inbox.CountRetentionImpactAsync(Math.Clamp(retentionDays, 1, 365)).ConfigureAwait(false);
+    public async Task<int?> TryCountRetentionImpactAsync(int retentionDays)
+    {
+        try
+        {
+            return await _inbox.CountRetentionImpactAsync(Math.Clamp(retentionDays, 1, 365)).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _dispatch(() => ErrorOccurred?.Invoke(this, $"无法计算留存期影响：{exception.Message}"));
+            return null;
+        }
+    }
 
     public async Task<bool> SaveSettingAsync(
         Func<AppSettings, AppSettings> update,

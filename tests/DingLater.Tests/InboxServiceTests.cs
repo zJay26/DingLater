@@ -200,12 +200,68 @@ public sealed class InboxServiceTests
         CollectionAssert.Contains(reminders.Cancelled, message.Id);
     }
 
+    [TestMethod]
+    public async Task StartCapture_RollsBackSubscriptionsAndStartedSources_WhenLaterSourceFails()
+    {
+        var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");
+        var first = new FakeCaptureSource();
+        var second = new FakeCaptureSource { ThrowOnStart = true };
+        await using var service = CreateService(
+            new FakeReminders(),
+            [first, second],
+            new ManualTimeProvider(now));
+        await service.InitializeAsync();
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.StartCaptureAsync());
+
+        Assert.AreEqual(1, first.StopCount);
+        Assert.AreEqual(1, second.StopCount);
+        Assert.AreEqual(0, first.BatchSubscriberCount);
+        Assert.AreEqual(0, second.BatchSubscriberCount);
+
+        second.ThrowOnStart = false;
+        await service.StartCaptureAsync();
+
+        Assert.AreEqual(1, first.BatchSubscriberCount);
+        Assert.AreEqual(1, second.BatchSubscriberCount);
+        await service.StopCaptureAsync();
+        Assert.AreEqual(0, first.BatchSubscriberCount);
+        Assert.AreEqual(0, second.BatchSubscriberCount);
+    }
+
+    [TestMethod]
+    public async Task StopCapture_CleansEverySubscription_WhenOneSourceFailsToStop()
+    {
+        var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");
+        var first = new FakeCaptureSource { ThrowOnStop = true };
+        var second = new FakeCaptureSource();
+        await using var service = CreateService(
+            new FakeReminders(),
+            [first, second],
+            new ManualTimeProvider(now));
+        await service.InitializeAsync();
+        await service.StartCaptureAsync();
+
+        await Assert.ThrowsExactlyAsync<AggregateException>(() => service.StopCaptureAsync());
+
+        Assert.AreEqual(1, first.StopCount);
+        Assert.AreEqual(1, second.StopCount);
+        Assert.AreEqual(0, first.BatchSubscriberCount);
+        Assert.AreEqual(0, second.BatchSubscriberCount);
+    }
+
     private InboxService CreateService(FakeReminders reminders, FakeCaptureSource source, TimeProvider clock)
+        => CreateService(reminders, [source], clock);
+
+    private InboxService CreateService(
+        FakeReminders reminders,
+        IEnumerable<FakeCaptureSource> sources,
+        TimeProvider clock)
     {
         var store = new SqliteMessageStore(
             Path.Combine(_directory, "messages.db"),
             new MessageCrypto(RandomNumberGenerator.GetBytes(32)));
-        return new InboxService(store, reminders, [source], clock);
+        return new InboxService(store, reminders, sources, clock);
     }
 
     private static async Task<StoredMessage> AddDirectAsync(InboxService service, FakeCaptureSource source, DateTimeOffset now)
@@ -255,15 +311,30 @@ public sealed class InboxServiceTests
 
     private sealed class FakeCaptureSource : ICaptureSource
     {
+        private CaptureBatchHandler? _batchCaptured;
+
         public string Name => "fake";
         public CaptureHealth Health { get; private set; } = new("fake", CaptureHealthState.Stopped, "", DateTimeOffset.Now);
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
-        public event CaptureBatchHandler? BatchCaptured;
+        public int BatchSubscriberCount => _batchCaptured?.GetInvocationList().Length ?? 0;
+        public bool ThrowOnStart { get; set; }
+        public bool ThrowOnStop { get; set; }
+        public event CaptureBatchHandler? BatchCaptured
+        {
+            add => _batchCaptured += value;
+            remove => _batchCaptured -= value;
+        }
+
         public event EventHandler<CaptureHealth>? HealthChanged;
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
             StartCount++;
+            if (ThrowOnStart)
+            {
+                throw new InvalidOperationException("Synthetic start failure.");
+            }
+
             Health = Health with { State = CaptureHealthState.Healthy };
             HealthChanged?.Invoke(this, Health);
             return Task.CompletedTask;
@@ -272,10 +343,15 @@ public sealed class InboxServiceTests
         public Task StopAsync(CancellationToken cancellationToken = default)
         {
             StopCount++;
+            if (ThrowOnStop)
+            {
+                throw new InvalidOperationException("Synthetic stop failure.");
+            }
+
             return Task.CompletedTask;
         }
 
-        public Task EmitAsync(CapturedMessage message) => BatchCaptured is { } handler
+        public Task EmitAsync(CapturedMessage message) => _batchCaptured is { } handler
             ? handler(this, CaptureBatch.Single(message), CancellationToken.None)
             : Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

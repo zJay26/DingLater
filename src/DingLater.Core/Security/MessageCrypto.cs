@@ -3,11 +3,12 @@ using System.Text;
 
 namespace DingLater.Core.Security;
 
-public sealed class MessageCrypto
+public sealed class MessageCrypto : IDisposable
 {
     private const byte FormatVersion = 1;
     private readonly byte[] _masterKey;
     private readonly byte[] _fingerprintKey;
+    private bool _disposed;
 
     public MessageCrypto(byte[] masterKey)
     {
@@ -23,24 +24,32 @@ public sealed class MessageCrypto
 
     public byte[] Encrypt(string plaintext)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var plainBytes = Encoding.UTF8.GetBytes(plaintext ?? string.Empty);
-        var nonce = RandomNumberGenerator.GetBytes(12);
-        var tag = new byte[16];
-        var cipher = new byte[plainBytes.Length];
-        using var aes = new AesGcm(_masterKey, tag.Length);
-        aes.Encrypt(nonce.AsSpan(), plainBytes.AsSpan(), cipher.AsSpan(), tag.AsSpan(), new byte[] { FormatVersion });
+        try
+        {
+            var nonce = RandomNumberGenerator.GetBytes(12);
+            var tag = new byte[16];
+            var cipher = new byte[plainBytes.Length];
+            using var aes = new AesGcm(_masterKey, tag.Length);
+            aes.Encrypt(nonce.AsSpan(), plainBytes.AsSpan(), cipher.AsSpan(), tag.AsSpan(), new byte[] { FormatVersion });
 
-        var result = new byte[1 + nonce.Length + tag.Length + cipher.Length];
-        result[0] = FormatVersion;
-        nonce.CopyTo(result, 1);
-        tag.CopyTo(result, 13);
-        cipher.CopyTo(result, 29);
-        CryptographicOperations.ZeroMemory(plainBytes);
-        return result;
+            var result = new byte[1 + nonce.Length + tag.Length + cipher.Length];
+            result[0] = FormatVersion;
+            nonce.CopyTo(result, 1);
+            tag.CopyTo(result, 13);
+            cipher.CopyTo(result, 29);
+            return result;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plainBytes);
+        }
     }
 
     public string Decrypt(byte[] payload)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (payload.Length < 29 || payload[0] != FormatVersion)
         {
             throw new CryptographicException("Unsupported encrypted message format.");
@@ -64,6 +73,7 @@ public sealed class MessageCrypto
 
     public byte[] Fingerprint(params string[] values)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var normalized = Encoding.UTF8.GetBytes(string.Join("\u001F", values.Select(Normalize)));
         try
         {
@@ -74,6 +84,18 @@ public sealed class MessageCrypto
         {
             CryptographicOperations.ZeroMemory(normalized);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        CryptographicOperations.ZeroMemory(_masterKey);
+        CryptographicOperations.ZeroMemory(_fingerprintKey);
+        _disposed = true;
     }
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();

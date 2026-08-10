@@ -13,6 +13,7 @@ public sealed class DingTalkDatabaseSource : ICaptureSource
     private readonly DingTalkSnapshotReader _snapshotReader = new();
     private readonly DingTalkMessageReader _messageReader = new();
     private readonly SemaphoreSlim _wakeSignal = new(0, 1);
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private CancellationTokenSource? _lifetime;
     private Task? _loopTask;
     private FileSystemWatcher? _watcher;
@@ -37,52 +38,75 @@ public sealed class DingTalkDatabaseSource : ICaptureSource
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_lifetime is not null)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (_lifetime is not null)
+            {
+                return;
+            }
 
-        _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        SetHealth(CaptureHealthState.Starting, "正在定位钉钉 V3 数据库");
-        await CaptureOnceAsync(force: true, _lifetime.Token).ConfigureAwait(false);
-        _loopTask = Task.Run(() => CaptureLoopAsync(_lifetime.Token), CancellationToken.None);
+            var lifetime = new CancellationTokenSource();
+            _lifetime = lifetime;
+            try
+            {
+                SetHealth(CaptureHealthState.Starting, "正在定位钉钉 V3 数据库");
+                using var initialCapture = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    lifetime.Token);
+                await CaptureOnceAsync(force: true, initialCapture.Token).ConfigureAwait(false);
+                _loopTask = Task.Run(() => CaptureLoopAsync(lifetime.Token), CancellationToken.None);
+            }
+            catch
+            {
+                CleanupStoppedState(lifetime);
+                throw;
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        if (_lifetime is null)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            if (_lifetime is null)
+            {
+                return;
+            }
 
-        _lifetime.Cancel();
-        Wake();
-        if (_loopTask is not null)
+            var lifetime = _lifetime;
+            lifetime.Cancel();
+            Wake();
+            if (_loopTask is not null)
+            {
+                try
+                {
+                    await _loopTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            CleanupStoppedState(lifetime);
+            SetHealth(CaptureHealthState.Stopped, "本地数据库捕获已停止");
+        }
+        finally
         {
-            try
-            {
-                await _loopTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            _lifecycleGate.Release();
         }
-
-        _watcher?.Dispose();
-        _watcher = null;
-        _account?.Dispose();
-        _account = null;
-        _lastStamp = null;
-        _loopTask = null;
-        _lifetime.Dispose();
-        _lifetime = null;
-        SetHealth(CaptureHealthState.Stopped, "本地数据库捕获已停止");
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
         _wakeSignal.Dispose();
+        _lifecycleGate.Dispose();
     }
 
     private async Task CaptureLoopAsync(CancellationToken cancellationToken)
@@ -151,8 +175,8 @@ public sealed class DingTalkDatabaseSource : ICaptureSource
 
             var requiresBaseline = storedPositions.Count != DingTalkMessageReader.PartitionCount
                                    || currentPositions.Any(pair =>
-                                       storedPositions.TryGetValue(pair.Key, out var stored)
-                                       && stored > pair.Value);
+                                       !storedPositions.TryGetValue(pair.Key, out var stored)
+                                       || stored > pair.Value);
             if (requiresBaseline)
             {
                 var baseline = currentPositions.Select(pair => new CaptureCheckpoint(
@@ -174,11 +198,25 @@ public sealed class DingTalkDatabaseSource : ICaptureSource
                 return;
             }
 
+            if (!HasAdvancedPositions(storedPositions, currentPositions))
+            {
+                _lastStamp = stamp;
+                SetHealth(
+                    CaptureHealthState.Healthy,
+                    "只读数据库捕获正常，正在等待新消息",
+                    databaseFound: true,
+                    keyDerived: true,
+                    walValid: true,
+                    schemaCompatible: true);
+                return;
+            }
+
             var settings = await _store.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
             var result = await _messageReader.ReadNewAsync(
                 snapshot.Connection,
                 _account,
                 storedPositions,
+                currentPositions,
                 settings.GroupCaptureMode,
                 now,
                 cancellationToken).ConfigureAwait(false);
@@ -237,6 +275,29 @@ public sealed class DingTalkDatabaseSource : ICaptureSource
                 databaseFound: true,
                 errorCode: "database_access_denied");
         }
+    }
+
+    internal static bool HasAdvancedPositions(
+        IReadOnlyDictionary<int, long> storedPositions,
+        IReadOnlyDictionary<int, long> currentPositions) =>
+        currentPositions.Any(pair =>
+            storedPositions.TryGetValue(pair.Key, out var stored)
+            && pair.Value > stored);
+
+    private void CleanupStoppedState(CancellationTokenSource lifetime)
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        _account?.Dispose();
+        _account = null;
+        _lastStamp = null;
+        _loopTask = null;
+        if (ReferenceEquals(_lifetime, lifetime))
+        {
+            _lifetime = null;
+        }
+
+        lifetime.Dispose();
     }
 
     private async Task RefreshAccountAsync(CancellationToken cancellationToken)

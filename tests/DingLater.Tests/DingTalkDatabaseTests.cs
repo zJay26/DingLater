@@ -13,6 +13,68 @@ namespace DingLater.Tests;
 public sealed class DingTalkDatabaseTests
 {
     [TestMethod]
+    public void CaptureSource_DetectsOnlyForwardCheckpointProgress()
+    {
+        IReadOnlyDictionary<int, long> stored = new Dictionary<int, long> { [0] = 12, [1] = 8 };
+
+        Assert.IsFalse(DingTalkDatabaseSource.HasAdvancedPositions(
+            stored,
+            new Dictionary<int, long> { [0] = 12, [1] = 8 }));
+        Assert.IsTrue(DingTalkDatabaseSource.HasAdvancedPositions(
+            stored,
+            new Dictionary<int, long> { [0] = 13, [1] = 8 }));
+        Assert.IsFalse(DingTalkDatabaseSource.HasAdvancedPositions(
+            stored,
+            new Dictionary<int, long> { [0] = 11, [1] = 8 }));
+    }
+
+    [TestMethod]
+    public async Task MessageReader_QueriesOnlyPartitionsWhoseCheckpointAdvanced()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = """
+                CREATE TABLE tbconversation (cid TEXT PRIMARY KEY, type INTEGER, title TEXT, status INTEGER);
+                CREATE TABLE tbuser_profile_v2 (uid INTEGER PRIMARY KEY, nick TEXT, realName TEXT);
+                CREATE TABLE tbmsg_005 (
+                    primaryKey INTEGER PRIMARY KEY, cid TEXT, mid INTEGER, senderId INTEGER,
+                    createdAt INTEGER, contentType INTEGER, content TEXT, recallStatus INTEGER,
+                    atIds TEXT, attachments TEXT
+                );
+                INSERT INTO tbconversation VALUES ('direct-5', 1, '增量会话', 1);
+                INSERT INTO tbuser_profile_v2 VALUES (200, '发送者', '');
+                INSERT INTO tbmsg_005 VALUES (
+                    1, 'direct-5', 1, 200, 1700000000000, 1,
+                    '{"text":"只查询变化分区"}', 0, '[]', '');
+                """;
+            await schema.ExecuteNonQueryAsync();
+        }
+
+        var stored = Enumerable.Range(0, DingTalkMessageReader.PartitionCount)
+            .ToDictionary(partition => partition, _ => 0L);
+        var current = stored.ToDictionary(pair => pair.Key, pair => pair.Value);
+        current[5] = 1;
+        using var account = new DingTalkAccount(
+            "test", "test", "test-wal", "account", 100,
+            RandomNumberGenerator.GetBytes(16), DateTime.UtcNow, 1);
+
+        var result = await new DingTalkMessageReader().ReadNewAsync(
+            connection,
+            account,
+            stored,
+            current,
+            GroupCaptureMode.MentionsOnly,
+            DateTimeOffset.UtcNow,
+            CancellationToken.None);
+
+        Assert.HasCount(1, result.Messages);
+        Assert.AreEqual("只查询变化分区", result.Messages[0].VisibleBody);
+        Assert.AreEqual(5, result.Checkpoints.Single().Partition);
+    }
+
+    [TestMethod]
     public void V3KeyDerivation_MatchesKnownVector()
     {
         var key = DingTalkV3KeyDeriver.Derive(

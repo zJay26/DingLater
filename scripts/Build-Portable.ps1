@@ -3,7 +3,8 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
     [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
-    [string]$Version = '2.1.2'
+    [string]$Version = '2.1.2',
+    [string]$DotnetPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,8 +62,16 @@ if (Test-Path -LiteralPath $legacyPackagingRoot) {
 try {
     New-Item -ItemType Directory -Path $publishRoot -Force | Out-Null
 
-    $dotnet = Join-Path $repoRoot '.tools\dotnet\dotnet.exe'
-    if (-not (Test-Path -LiteralPath $dotnet)) {
+    if (-not [string]::IsNullOrWhiteSpace($DotnetPath)) {
+        $dotnet = [IO.Path]::GetFullPath($DotnetPath)
+        if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
+            throw "The requested dotnet executable does not exist: $dotnet"
+        }
+    }
+    else {
+        $dotnet = Join-Path $repoRoot '.tools\dotnet\dotnet.exe'
+    }
+    if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
         $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
     }
 
