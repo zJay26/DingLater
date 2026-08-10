@@ -31,12 +31,12 @@ public sealed partial class OnboardingPage : Page
         StatusInfoBar.IsOpen = true;
         StatusInfoBar.Severity = InfoBarSeverity.Informational;
         StatusInfoBar.Message = "正在建立新消息起点…";
+        var startupEnabled = false;
         try
         {
-            var startEnabled = false;
             if (StartupToggle.IsOn)
             {
-                startEnabled = await _startup.SetEnabledAsync(true);
+                startupEnabled = await _startup.SetEnabledAsync(true);
             }
 
             await _inbox.SaveSettingsAsync(_inbox.Settings with
@@ -44,12 +44,24 @@ public sealed partial class OnboardingPage : Page
                 OnboardingCompleted = true,
                 CaptureConsentVersion = 1,
                 StartupChoiceMade = true,
-                StartWithWindows = startEnabled
+                StartWithWindows = startupEnabled
             }, applyRetention: false);
             _completion.TrySetResult(true);
         }
         catch (Exception exception)
         {
+            if (startupEnabled)
+            {
+                try
+                {
+                    await _startup.SetEnabledAsync(false);
+                }
+                catch
+                {
+                    // Keep the original save failure visible; Settings can repair startup state later.
+                }
+            }
+
             StatusInfoBar.Severity = InfoBarSeverity.Error;
             StatusInfoBar.Message = $"无法保存设置：{exception.Message}";
             ContinueButton.IsEnabled = true;

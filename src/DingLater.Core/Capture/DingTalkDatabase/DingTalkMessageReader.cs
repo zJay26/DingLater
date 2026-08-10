@@ -58,6 +58,23 @@ internal sealed class DingTalkMessageReader
         IReadOnlyDictionary<int, long> positions,
         GroupCaptureMode groupCaptureMode,
         DateTimeOffset capturedAt,
+        CancellationToken cancellationToken) =>
+        await ReadNewAsync(
+            connection,
+            account,
+            positions,
+            currentPositions: null,
+            groupCaptureMode,
+            capturedAt,
+            cancellationToken).ConfigureAwait(false);
+
+    internal async Task<DingTalkReadResult> ReadNewAsync(
+        SqliteConnection connection,
+        DingTalkAccount account,
+        IReadOnlyDictionary<int, long> positions,
+        IReadOnlyDictionary<int, long>? currentPositions,
+        GroupCaptureMode groupCaptureMode,
+        DateTimeOffset capturedAt,
         CancellationToken cancellationToken)
     {
         var conversations = await ReadConversationsAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -71,6 +88,12 @@ internal sealed class DingTalkMessageReader
         for (var partition = 0; partition < PartitionCount && remaining > 0; partition++)
         {
             var position = positions.GetValueOrDefault(partition);
+            if (currentPositions is not null
+                && currentPositions.GetValueOrDefault(partition) <= position)
+            {
+                continue;
+            }
+
             var table = TableName(partition);
             await using var command = connection.CreateCommand();
             command.CommandText = $"""

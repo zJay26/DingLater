@@ -129,38 +129,48 @@ public sealed partial class SettingsPage : Page
         }
 
         _updating = true;
-        if (retentionDays < current)
+        try
         {
-            var count = await _viewModel.CountRetentionImpactAsync(retentionDays);
-            if (count > 0)
+            if (retentionDays < current)
             {
-                var dialog = new ContentDialog
-                {
-                    XamlRoot = XamlRoot,
-                    Title = "缩短消息留存期？",
-                    Content = $"将立即删除 {count} 条已到期消息，并取消对应提醒。",
-                    PrimaryButtonText = "继续",
-                    CloseButtonText = "取消",
-                    DefaultButton = ContentDialogButton.Close
-                };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                var count = await _viewModel.TryCountRetentionImpactAsync(retentionDays);
+                if (count is null)
                 {
                     RetentionNumberBox.Value = current;
-                    _updating = false;
                     return;
                 }
+
+                if (count > 0)
+                {
+                    var dialog = new ContentDialog
+                    {
+                        XamlRoot = XamlRoot,
+                        Title = "缩短消息留存期？",
+                        Content = $"将立即删除 {count} 条已到期消息，并取消对应提醒。",
+                        PrimaryButtonText = "继续",
+                        CloseButtonText = "取消",
+                        DefaultButton = ContentDialogButton.Close
+                    };
+                    if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                    {
+                        RetentionNumberBox.Value = current;
+                        return;
+                    }
+                }
+            }
+
+            var saved = await _viewModel.SaveSettingAsync(
+                settings => settings with { RetentionDays = retentionDays },
+                applyRetention: true);
+            if (!saved)
+            {
+                RetentionNumberBox.Value = current;
             }
         }
-
-        var saved = await _viewModel.SaveSettingAsync(
-            settings => settings with { RetentionDays = retentionDays },
-            applyRetention: true);
-        if (!saved)
+        finally
         {
-            RetentionNumberBox.Value = current;
+            _updating = false;
         }
-
-        _updating = false;
     }
 
     private async void DeleteAllButton_Click(object sender, RoutedEventArgs e)

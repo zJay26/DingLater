@@ -10,7 +10,7 @@ public sealed class MessageCryptoTests
     [TestMethod]
     public void Encrypt_RoundTrips_WithoutPlaintextBytes()
     {
-        var crypto = new MessageCrypto(RandomNumberGenerator.GetBytes(32));
+        using var crypto = new MessageCrypto(RandomNumberGenerator.GetBytes(32));
         const string marker = "DINGLATER_PRIVACY_MARKER_7f81f04e";
 
         var encrypted = crypto.Encrypt(marker);
@@ -39,10 +39,22 @@ public sealed class MessageCryptoTests
     [TestMethod]
     public void Decrypt_RejectsAuthenticatedCiphertextTampering()
     {
-        var crypto = new MessageCrypto(RandomNumberGenerator.GetBytes(32));
+        using var crypto = new MessageCrypto(RandomNumberGenerator.GetBytes(32));
         var encrypted = crypto.Encrypt("不可被篡改的消息");
         encrypted[^1] ^= 0x40;
 
         Assert.ThrowsExactly<AuthenticationTagMismatchException>(() => crypto.Decrypt(encrypted));
+    }
+
+    [TestMethod]
+    public void Dispose_RejectsFurtherCryptographicOperations()
+    {
+        var crypto = new MessageCrypto(RandomNumberGenerator.GetBytes(32));
+
+        crypto.Dispose();
+
+        Assert.ThrowsExactly<ObjectDisposedException>(() => crypto.Encrypt("消息"));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => crypto.Decrypt(new byte[29]));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => crypto.Fingerprint("消息"));
     }
 }

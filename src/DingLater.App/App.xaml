@@ -12,6 +12,7 @@
                     <SolidColorBrush x:Key="DingTextBrush" Color="#1F2633" />
                     <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="#657184" />
                     <SolidColorBrush x:Key="DingAccentBrush" Color="#5B68BC" />
+                    <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="White" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="#E9EBF8" />
                     <SolidColorBrush x:Key="DingSuccessBrush" Color="#3B7A63" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="#DDE2EA" />
@@ -24,6 +25,7 @@
                     <SolidColorBrush x:Key="DingTextBrush" Color="#F2F4F8" />
                     <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="#AAB2C1" />
                     <SolidColorBrush x:Key="DingAccentBrush" Color="#AEB7FF" />
+                    <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="Black" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="#30364F" />
                     <SolidColorBrush x:Key="DingSuccessBrush" Color="#83C5A7" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="#3A3F48" />
@@ -36,6 +38,7 @@
                     <SolidColorBrush x:Key="DingTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="DingSuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
