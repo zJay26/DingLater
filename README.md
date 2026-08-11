@@ -35,7 +35,7 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 普通用户只需要下面几步：
 
 1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
-2. 下载名称类似 `DingLater-2.1.2-win-x64-portable.zip` 的 ZIP 文件。
+2. 下载名称类似 `DingLater-2.2.0-win-x64-portable.zip` 的 ZIP 文件。
 3. 把 ZIP 解压到一个固定文件夹，然后双击里面的 `DingLater.exe`。
 4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
 
@@ -44,7 +44,7 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 校验方法：把 ZIP 和 `SHA256SUMS.txt` 放在同一个文件夹，在该文件夹打开 PowerShell，运行下面的命令（文件名不同时请替换第一行）：
 
 ```powershell
-$zip = ".\DingLater-2.1.2-win-x64-portable.zip"
+$zip = ".\DingLater-2.2.0-win-x64-portable.zip"
 $expected = (Get-Content .\SHA256SUMS.txt).Trim().Split()[0].ToLower()
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校验失败，请重新下载" }
@@ -90,7 +90,7 @@ $env:DOTNET_CLI_HOME="$PWD\.tools\cli-home"
 $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 .\.tools\dotnet\dotnet.exe restore .\DingLater.slnx --locked-mode
 .\.tools\dotnet\dotnet.exe test .\DingLater.slnx -c Release
-.\scripts\Build-Portable.ps1 -Version 2.1.2
+.\scripts\Build-Portable.ps1 -Version 2.2.0
 ```
 
 最新本地测试版始终位于 `BuildOutput\DingLater.exe`，也可以直接双击仓库根目录的 `启动最新版本.cmd`。每次执行构建脚本都会覆盖这个固定目录，不再创建按日期变化的发布目录；ZIP 和 `SHA256SUMS.txt` 也放在同一目录。只有明确设置 `DINGLATER_DEMO=1` 或传入 `--demo` 的 Debug 运行才使用合成消息；普通 Debug/Release 都使用真实只读 V3 来源，Release 会忽略这两个测试入口。

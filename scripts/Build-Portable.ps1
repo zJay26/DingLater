@@ -3,7 +3,7 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
     [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
-    [string]$Version = '2.1.2',
+    [string]$Version = '2.2.0',
     [string]$DotnetPath = ''
 )
 

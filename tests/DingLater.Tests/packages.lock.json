@@ -371,7 +371,7 @@
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.WinUI.Controls.SettingsControls": "[8.2.251219, 8.2.251219]",
-          "DingLater.Core": "[2.1.2, )",
+          "DingLater.Core": "[2.2.0, )",
           "H.NotifyIcon.WinUI": "[2.4.1, 2.4.1]",
           "Microsoft.WindowsAppSDK": "[2.3.1, 2.3.1]"
         }
