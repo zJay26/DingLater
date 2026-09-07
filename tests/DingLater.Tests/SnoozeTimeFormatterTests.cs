@@ -31,10 +31,11 @@ public sealed class SnoozeTimeFormatterTests
     [TestMethod]
     public void TomorrowAtNine_IsAlwaysNextNaturalDay()
     {
-        var late = DateTimeOffset.Parse("2026-08-04T23:59:00+08:00");
-        var early = DateTimeOffset.Parse("2026-08-04T00:01:00+08:00");
+        var late = new DateTimeOffset(new DateTime(2026, 8, 4, 23, 59, 0, DateTimeKind.Local));
+        var early = new DateTimeOffset(new DateTime(2026, 8, 4, 0, 1, 0, DateTimeKind.Local));
+        var expected = new DateTimeOffset(new DateTime(2026, 8, 5, 9, 0, 0, DateTimeKind.Local));
 
-        Assert.AreEqual(DateTimeOffset.Parse("2026-08-05T09:00:00+08:00"), SnoozeTimeFormatter.TomorrowAtNine(late));
-        Assert.AreEqual(DateTimeOffset.Parse("2026-08-05T09:00:00+08:00"), SnoozeTimeFormatter.TomorrowAtNine(early));
+        Assert.AreEqual(expected, SnoozeTimeFormatter.TomorrowAtNine(late));
+        Assert.AreEqual(expected, SnoozeTimeFormatter.TomorrowAtNine(early));
     }
 }
