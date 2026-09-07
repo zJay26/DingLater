@@ -1,0 +1,51 @@
+name: Windows
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths-ignore: ['android/**', 'docs/ANDROID*']
+  pull_request:
+    paths-ignore: ['android/**', 'docs/ANDROID*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Restore locked dependencies
+        run: dotnet restore DingLater.slnx --locked-mode
+      - name: Verify formatting
+        run: dotnet format DingLater.slnx --no-restore --verify-no-changes
+      - name: Test Windows and Core
+        run: dotnet test DingLater.slnx -c Release --no-restore --logger trx --results-directory TestResults
+      - name: Check packaging script syntax
+        shell: pwsh
+        run: |
+          foreach ($file in Get-ChildItem scripts -Filter *.ps1) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-tests
+          path: TestResults/*.trx
+          if-no-files-found: ignore

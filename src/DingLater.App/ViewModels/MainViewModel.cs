@@ -17,9 +17,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly InboxService _inbox;
     private readonly StartupService _startup;
     private readonly Action<Action> _dispatch;
-    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly object _refreshSync = new();
     private readonly SemaphoreSlim _settingsGate = new(1, 1);
+    private Task? _refreshTask;
+    private bool _refreshRequested;
+    private volatile bool _disposed;
     private List<StoredMessage> _allMessages = [];
+    private Dictionary<InboxState, List<ConversationThreadViewModel>> _threads = [];
+    private IReadOnlyList<string> _searchSuggestions = [];
     private InboxSection _section;
     private string _searchText = string.Empty;
     private bool _isBusy;
@@ -34,7 +39,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         _inbox = inbox;
         _startup = startup;
-        _dispatch = dispatch ?? (action => action());
+        var dispatcher = dispatch ?? (action => action());
+        _dispatch = action => dispatcher(() =>
+        {
+            if (!_disposed)
+            {
+                action();
+            }
+        });
         Conversations = [];
         HealthSources = [];
         _inbox.InboxChanged += OnInboxChanged;
@@ -88,13 +100,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public bool IsEmpty => Conversations.Count == 0;
-    public int InboxCount => _allMessages.Count(item => item.State == InboxState.Inbox);
-    public StoredMessage? LatestInboxMessage => _allMessages
-        .Where(item => item.State == InboxState.Inbox)
-        .OrderByDescending(ConversationPresentation.GetMessageTime)
-        .FirstOrDefault();
-    public int SnoozedCount => _allMessages.Count(item => item.State == InboxState.Snoozed);
-    public int HandledCount => _allMessages.Count(item => item.State == InboxState.Handled);
+    public int InboxCount { get; private set; }
+    public StoredMessage? LatestInboxMessage { get; private set; }
+    public int SnoozedCount { get; private set; }
+    public int HandledCount { get; private set; }
     public bool CapturePaused => Settings.CapturePaused;
     public string CaptureActionText => CapturePaused ? "开始捕获" : "暂停捕获";
     public int QuickSnoozeMinutes => Settings.QuickSnoozeMinutes;
@@ -154,27 +163,59 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _dispatch(() => UpdateHealth(_inbox.Health));
     }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
     {
-        await _refreshGate.WaitAsync().ConfigureAwait(false);
+        lock (_refreshSync)
+        {
+            if (_disposed)
+            {
+                return Task.CompletedTask;
+            }
+
+            _refreshRequested = true;
+            return _refreshTask ??= Task.Run(RefreshLoopAsync);
+        }
+    }
+
+    private async Task RefreshLoopAsync()
+    {
         try
         {
             _dispatch(() => IsBusy = true);
-            var messages = (await _inbox.ListAsync().ConfigureAwait(false)).ToList();
-            _dispatch(() =>
+            while (true)
             {
-                _allMessages = messages;
-                ApplyFilter();
-            });
+                lock (_refreshSync)
+                {
+                    if (_disposed || !_refreshRequested)
+                    {
+                        _refreshTask = null;
+                        _dispatch(() => IsBusy = false);
+                        return;
+                    }
+
+                    _refreshRequested = false;
+                }
+
+                var messages = (await _inbox.ListAsync().ConfigureAwait(false)).ToList();
+                _dispatch(() =>
+                {
+                    _allMessages = messages;
+                    RebuildThreads();
+                    ApplyFilter();
+                });
+            }
         }
         catch (Exception exception)
         {
-            _dispatch(() => ErrorOccurred?.Invoke(this, $"刷新失败：{exception.Message}"));
-        }
-        finally
-        {
-            _dispatch(() => IsBusy = false);
-            _refreshGate.Release();
+            lock (_refreshSync)
+            {
+                _refreshTask = null;
+                _dispatch(() =>
+                {
+                    IsBusy = false;
+                    ErrorOccurred?.Invoke(this, $"刷新失败：{exception.Message}");
+                });
+            }
         }
     }
 
@@ -185,16 +226,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return [];
         }
 
-        return _allMessages
-            .SelectMany(message => new[]
-            {
-                ConversationPresentation.GetTitle([message]),
-                message.Captured.Conversation,
-                message.Captured.Sender
-            })
-            .Where(value => !string.IsNullOrWhiteSpace(value)
-                            && value.Contains(query, StringComparison.CurrentCultureIgnoreCase))
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        return _searchSuggestions
+            .Where(value => value.Contains(query.Trim(), StringComparison.CurrentCultureIgnoreCase))
             .Take(8)
             .ToList();
     }
@@ -344,21 +377,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public async Task<bool> ToggleCaptureAsync()
     {
+        await _settingsGate.WaitAsync().ConfigureAwait(false);
         try
         {
             await _inbox.SetCapturePausedAsync(!CapturePaused).ConfigureAwait(false);
-            _dispatch(() =>
-            {
-                OnPropertyChanged(nameof(CapturePaused));
-                OnPropertyChanged(nameof(CaptureActionText));
-                UpdateHealth(_inbox.Health);
-            });
             return true;
         }
         catch (Exception exception)
         {
             _dispatch(() => ErrorOccurred?.Invoke(this, $"更改捕获状态失败：{exception.Message}"));
             return false;
+        }
+        finally
+        {
+            _settingsGate.Release();
+            _dispatch(() =>
+            {
+                OnPropertyChanged(nameof(CapturePaused));
+                OnPropertyChanged(nameof(CaptureActionText));
+                UpdateHealth(_inbox.Health);
+            });
         }
     }
 
@@ -461,6 +499,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        SearchText = string.Empty;
         Section = item.State switch
         {
             InboxState.Snoozed => InboxSection.Snoozed,
@@ -480,10 +519,40 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _inbox.InboxChanged -= OnInboxChanged;
         _inbox.HealthChanged -= OnHealthChanged;
-        _refreshGate.Dispose();
-        _settingsGate.Dispose();
+        // Queued refresh/settings continuations may still be finishing during shutdown.
+    }
+
+    private void RebuildThreads()
+    {
+        var previous = _threads.SelectMany(section => section.Value.Select(thread =>
+                new KeyValuePair<(InboxState, string), ConversationThreadViewModel>((section.Key, thread.Key), thread)))
+            .ToDictionary();
+        _threads = _allMessages.GroupBy(message => message.State).ToDictionary(
+            section => section.Key,
+            section => section.GroupBy(ConversationPresentation.GetKey, StringComparer.Ordinal)
+                .Select(group => previous.TryGetValue((section.Key, group.Key), out var thread) && thread.HasSameMessages(group)
+                    ? thread
+                    : new ConversationThreadViewModel(group))
+                .OrderBy(thread => section.Key == InboxState.Snoozed ? thread.NextReminderAt : DateTimeOffset.MinValue)
+                .ThenByDescending(thread => thread.LatestAt)
+                .ThenBy(thread => thread.Key, StringComparer.Ordinal)
+                .ToList());
+        _searchSuggestions = _threads.Values.SelectMany(threads => threads).Select(thread => thread.Title)
+            .Concat(_allMessages.SelectMany(message => new[] { message.Captured.Conversation, message.Captured.Sender }))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+        InboxCount = _allMessages.Count(message => message.State == InboxState.Inbox);
+        SnoozedCount = _allMessages.Count(message => message.State == InboxState.Snoozed);
+        HandledCount = _allMessages.Count(message => message.State == InboxState.Handled);
+        LatestInboxMessage = _allMessages.Where(message => message.State == InboxState.Inbox)
+            .MaxBy(ConversationPresentation.GetMessageTime);
+        OnPropertyChanged(nameof(InboxCount));
+        OnPropertyChanged(nameof(LatestInboxMessage));
+        OnPropertyChanged(nameof(SnoozedCount));
+        OnPropertyChanged(nameof(HandledCount));
     }
 
     private void ApplyFilter()
@@ -498,37 +567,46 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _ => InboxState.Inbox
         };
 
-        var threads = _allMessages
-            .Where(message => message.State == targetState)
-            .GroupBy(ConversationPresentation.GetKey, StringComparer.Ordinal)
-            .Select(group => new ConversationThreadViewModel(group))
-            .Where(thread => thread.Matches(SearchText))
-            .OrderByDescending(thread => thread.LatestAt)
+        var threads = _threads.GetValueOrDefault(targetState, [])
+            .Where(thread => thread.Matches(SearchText.Trim()))
             .ToList();
 
-        Conversations.Clear();
-        foreach (var thread in threads)
+        for (var index = 0; index < threads.Count; index++)
         {
-            Conversations.Add(thread);
+            var thread = threads[index];
+            if (index < Conversations.Count && ReferenceEquals(Conversations[index], thread))
+            {
+                continue;
+            }
+
+            var existingIndex = Conversations.IndexOf(thread);
+            if (existingIndex >= 0)
+            {
+                Conversations.Move(existingIndex, index);
+            }
+            else
+            {
+                Conversations.Insert(index, thread);
+            }
+        }
+
+        while (Conversations.Count > threads.Count)
+        {
+            Conversations.RemoveAt(Conversations.Count - 1);
         }
 
         var selected = previousKey is null
             ? Conversations.FirstOrDefault()
             : Conversations.FirstOrDefault(thread => thread.Key == previousKey)
               ?? Conversations.ElementAtOrDefault(Math.Clamp(previousIndex, 0, Math.Max(0, Conversations.Count - 1)));
-        _selectedConversation = selected;
-        OnPropertyChanged(nameof(SelectedConversation));
-        _selectedMessage = previousMessageId is null
+        var selectedMessage = previousMessageId is null
             ? selected?.Messages.FirstOrDefault()
             : selected?.Messages.FirstOrDefault(message => message.Id == previousMessageId)
               ?? selected?.Messages.FirstOrDefault();
-        OnPropertyChanged(nameof(SelectedMessage));
+        SetProperty(ref _selectedConversation, selected, nameof(SelectedConversation));
+        SetProperty(ref _selectedMessage, selectedMessage, nameof(SelectedMessage));
 
         OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(InboxCount));
-        OnPropertyChanged(nameof(LatestInboxMessage));
-        OnPropertyChanged(nameof(SnoozedCount));
-        OnPropertyChanged(nameof(HandledCount));
     }
 
     private void UpdateHealth(IEnumerable<CaptureHealth> health)

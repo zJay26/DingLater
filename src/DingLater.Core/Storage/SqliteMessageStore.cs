@@ -388,6 +388,54 @@ public sealed class SqliteMessageStore : IMessageStore
         }
     }
 
+    public async Task<IReadOnlyList<Guid>> SaveSettingsAndApplyRetentionAsync(
+        AppSettings settings,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        settings = settings.Normalize();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            using var transaction = connection.BeginTransaction();
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE messages SET expires_at_utc = captured_at_utc + $days;";
+            command.Parameters.AddWithValue("$days", (long)TimeSpan.FromDays(settings.RetentionDays).TotalMilliseconds);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            var cancelled = await SelectIdsAsync(connection,
+                """
+                SELECT id FROM messages
+                WHERE expires_at_utc <= $now
+                   OR (state = $snoozed AND snoozed_until_utc >= expires_at_utc);
+                """,
+                ("$now", (object)ToUnix(now)), ("$snoozed", (int)InboxState.Snoozed),
+                cancellationToken, transaction).ConfigureAwait(false);
+
+            command.Parameters.Clear();
+            command.CommandText = """
+                UPDATE messages SET state = $inbox, snoozed_until_utc = NULL, updated_at_utc = $now
+                WHERE state = $snoozed AND snoozed_until_utc >= expires_at_utc;
+                DELETE FROM messages WHERE expires_at_utc <= $now;
+                INSERT INTO settings(key, value) VALUES('app', $settings)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """;
+            command.Parameters.AddWithValue("$inbox", (int)InboxState.Inbox);
+            command.Parameters.AddWithValue("$snoozed", (int)InboxState.Snoozed);
+            command.Parameters.AddWithValue("$now", ToUnix(now));
+            command.Parameters.AddWithValue("$settings", JsonSerializer.Serialize(settings));
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return cancelled;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -447,6 +495,15 @@ public sealed class SqliteMessageStore : IMessageStore
     private async Task InitializeCoreAsync(CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using (var version = connection.CreateCommand())
+        {
+            version.CommandText = "PRAGMA user_version;";
+            if (Convert.ToInt32(await version.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture) > SchemaVersion)
+            {
+                throw new InvalidOperationException("本地数据由更新版本的 DingLater 创建，请使用更新版本打开。");
+            }
+        }
+
         await using var command = connection.CreateCommand();
         command.CommandText = $$"""
             PRAGMA journal_mode=WAL;
@@ -809,12 +866,12 @@ public sealed class SqliteMessageStore : IMessageStore
         var directory = Path.GetDirectoryName(_databasePath)!;
         var quarantine = Path.Combine(directory, "quarantine");
         Directory.CreateDirectory(quarantine);
-        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N");
         foreach (var path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {
             if (File.Exists(path))
             {
-                File.Move(path, Path.Combine(quarantine, Path.GetFileName(path) + "." + stamp), overwrite: true);
+                File.Move(path, Path.Combine(quarantine, Path.GetFileName(path) + "." + stamp));
             }
         }
     }

@@ -12,6 +12,7 @@ public sealed class InboxService : IAsyncDisposable
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _captureGate = new(1, 1);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly SemaphoreSlim _settingsGate = new(1, 1);
     private AppSettings _settings = new();
     private bool _started;
 
@@ -153,7 +154,7 @@ public sealed class InboxService : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(dueAt), "稍后时间必须晚于当前时间。");
         }
 
-        if (dueAt > message.ExpiresAt)
+        if (dueAt >= message.ExpiresAt)
         {
             throw new ArgumentOutOfRangeException(nameof(dueAt), "稍后时间不能超过消息到期时间。");
         }
@@ -250,64 +251,86 @@ public sealed class InboxService : IAsyncDisposable
 
     public async Task SaveSettingsAsync(AppSettings settings, bool applyRetention, CancellationToken cancellationToken = default)
     {
-        settings = settings.Normalize();
-        var previewChanged = settings.ShowReminderPreview != _settings.ShowReminderPreview;
-        if (applyRetention && settings.RetentionDays != _settings.RetentionDays)
+        await _settingsGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            var removed = await _store.ApplyRetentionAsync(settings.RetentionDays, _timeProvider.GetLocalNow(), cancellationToken).ConfigureAwait(false);
-            foreach (var id in removed)
+            settings = settings.Normalize();
+            var previewChanged = settings.ShowReminderPreview != _settings.ShowReminderPreview;
+            var retentionChanged = applyRetention && settings.RetentionDays != _settings.RetentionDays;
+            IReadOnlyList<Guid> cancelled = [];
+            // Capture must see the same retention setting as the committed database.
+            await _captureGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                await _reminders.CancelAsync(id, cancellationToken).ConfigureAwait(false);
+                if (retentionChanged)
+                {
+                    cancelled = await _store.SaveSettingsAndApplyRetentionAsync(
+                        settings, _timeProvider.GetLocalNow(), cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _store.SaveSettingsAsync(settings, cancellationToken).ConfigureAwait(false);
+                }
+
+                _settings = settings;
+            }
+            finally
+            {
+                _captureGate.Release();
             }
 
-            foreach (var message in await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+            // Finish notification cleanup even when the caller cancels after the commit.
+            foreach (var id in cancelled)
             {
-                if (message.State == InboxState.Snoozed
-                    && message.SnoozedUntil is { } dueAt
-                    && dueAt > message.ExpiresAt)
-                {
-                    await _store.UpdateStateAsync(
-                        message.Id,
-                        InboxState.Inbox,
-                        null,
-                        _timeProvider.GetLocalNow(),
-                        cancellationToken).ConfigureAwait(false);
-                    await _reminders.CancelAsync(message.Id, cancellationToken).ConfigureAwait(false);
-                }
+                await _reminders.CancelAsync(id, CancellationToken.None).ConfigureAwait(false);
             }
+
+            if (previewChanged || retentionChanged)
+            {
+                await RestoreReminderScheduleAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _settingsGate.Release();
         }
 
-        await _store.SaveSettingsAsync(settings, cancellationToken).ConfigureAwait(false);
-        _settings = settings;
-        if (previewChanged)
-        {
-            var now = _timeProvider.GetLocalNow();
-            foreach (var message in await _store.ListAsync(cancellationToken).ConfigureAwait(false))
-            {
-                if (message.State == InboxState.Snoozed && message.SnoozedUntil is { } dueAt && dueAt > now)
-                {
-                    await _reminders.ScheduleAsync(message, dueAt, settings.ShowReminderPreview, cancellationToken).ConfigureAwait(false);
-                }
-            }
-        }
         InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task SetCapturePausedAsync(bool paused, CancellationToken cancellationToken = default)
     {
-        var updated = _settings with { CapturePaused = paused };
-        await _store.SaveSettingsAsync(updated, cancellationToken).ConfigureAwait(false);
-        _settings = updated;
-        if (paused)
+        await _settingsGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await StopCaptureAsync(cancellationToken).ConfigureAwait(false);
+            var previous = _settings;
+            var updated = previous with { CapturePaused = paused };
+            await _store.SaveSettingsAsync(updated, cancellationToken).ConfigureAwait(false);
+            _settings = updated;
+            try
+            {
+                if (paused)
+                {
+                    await StopCaptureAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await StartCaptureAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch when (!paused)
+            {
+                var rollback = previous with { CapturePaused = true };
+                _settings = rollback;
+                await _store.SaveSettingsAsync(rollback, CancellationToken.None).ConfigureAwait(false);
+                throw;
+            }
         }
-        else
+        finally
         {
-            await StartCaptureAsync(cancellationToken).ConfigureAwait(false);
+            _settingsGate.Release();
+            InboxChanged?.Invoke(this, EventArgs.Empty);
         }
-
-        InboxChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DeleteAllAsync(CancellationToken cancellationToken = default)
@@ -347,7 +370,7 @@ public sealed class InboxService : IAsyncDisposable
         {
             if (message.State == InboxState.Snoozed
                 && message.SnoozedUntil is { } dueAt
-                && dueAt > now)
+                && dueAt > now && dueAt < message.ExpiresAt)
             {
                 await _reminders.ScheduleAsync(
                     message,
@@ -393,6 +416,7 @@ public sealed class InboxService : IAsyncDisposable
 
         _captureGate.Dispose();
         _lifecycleGate.Dispose();
+        _settingsGate.Dispose();
         if (failures.Count > 0)
         {
             throw new AggregateException("DingLater 后台服务未能完全释放。", failures);
@@ -422,9 +446,6 @@ public sealed class InboxService : IAsyncDisposable
             {
                 _captureGate.Release();
             }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
         }
         catch
         {

@@ -45,7 +45,7 @@ internal static class SnoozeTimeFormatter
             return false;
         }
 
-        if (dueAt > expiresAt)
+        if (dueAt >= expiresAt)
         {
             error = $"这条消息会在 {expiresAt.LocalDateTime:M月d日 HH:mm} 自动清理，请选择更早时间。";
             return false;

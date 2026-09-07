@@ -44,6 +44,7 @@ public sealed class InboxServiceTests
         var message = (await service.ListAsync()).Single();
 
         await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => service.SnoozeAsync(message.Id, message.ExpiresAt.AddMinutes(1)));
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => service.SnoozeAsync(message.Id, message.ExpiresAt));
         var due = now.AddHours(2);
         await service.SnoozeAsync(message.Id, due);
 
@@ -180,6 +181,23 @@ public sealed class InboxServiceTests
     }
 
     [TestMethod]
+    public async Task RetentionChange_RefreshesExpiryOfStillValidScheduledReminder()
+    {
+        var now = DateTimeOffset.Parse("2026-09-07T10:00:00+08:00");
+        var reminders = new FakeReminders();
+        var source = new FakeCaptureSource();
+        await using var service = CreateService(reminders, source, new ManualTimeProvider(now));
+        await service.InitializeAsync();
+        var message = await AddDirectAsync(service, source, now);
+        await service.SnoozeAsync(message.Id, now.AddHours(1));
+
+        await service.SaveSettingsAsync(service.Settings with { RetentionDays = 1 }, applyRetention: true);
+
+        Assert.AreEqual(now.AddDays(1), reminders.Messages[message.Id].ExpiresAt);
+        Assert.AreEqual(2, reminders.ScheduleCount[message.Id]);
+    }
+
+    [TestMethod]
     public async Task ShorterRetention_ReleasesSnoozeThatWouldOutliveExpiry()
     {
         var now = DateTimeOffset.Parse("2026-08-03T10:00:00+08:00");
@@ -290,12 +308,14 @@ public sealed class InboxServiceTests
     private sealed class FakeReminders : IReminderScheduler
     {
         internal Dictionary<Guid, DateTimeOffset> Scheduled { get; } = [];
+        internal Dictionary<Guid, StoredMessage> Messages { get; } = [];
         internal Dictionary<Guid, bool> Preview { get; } = [];
         internal Dictionary<Guid, int> ScheduleCount { get; } = [];
         internal List<Guid> Cancelled { get; } = [];
         public Task ScheduleAsync(StoredMessage message, DateTimeOffset dueAt, bool includePreview, CancellationToken cancellationToken = default)
         {
             Scheduled[message.Id] = dueAt;
+            Messages[message.Id] = message;
             Preview[message.Id] = includePreview;
             ScheduleCount[message.Id] = ScheduleCount.GetValueOrDefault(message.Id) + 1;
             return Task.CompletedTask;
@@ -307,6 +327,39 @@ public sealed class InboxServiceTests
             Scheduled.Remove(messageId);
             return Task.CompletedTask;
         }
+    }
+
+    [TestMethod]
+    public async Task FailedResume_RestoresPausedSettingAndAllowsRetry()
+    {
+        var source = new FakeCaptureSource { ThrowOnStart = true };
+        await using var service = CreateService(new FakeReminders(), source, new ManualTimeProvider(DateTimeOffset.Now));
+        await service.InitializeAsync();
+        await service.SetCapturePausedAsync(true);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.SetCapturePausedAsync(false));
+
+        Assert.IsTrue(service.Settings.CapturePaused);
+        Assert.AreEqual(0, source.BatchSubscriberCount);
+        source.ThrowOnStart = false;
+        await service.SetCapturePausedAsync(false);
+        Assert.IsFalse(service.Settings.CapturePaused);
+        Assert.AreEqual(1, source.BatchSubscriberCount);
+    }
+
+    [TestMethod]
+    public async Task CancelledCapture_DoesNotAcknowledgeUncommittedBatch()
+    {
+        var source = new FakeCaptureSource();
+        await using var service = CreateService(new FakeReminders(), source, new ManualTimeProvider(DateTimeOffset.Now));
+        await service.InitializeAsync();
+        await service.StartCaptureAsync();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var message = new CapturedMessage(CaptureSourceKind.Synthetic, DateTimeOffset.Now, "group", "sender", "body", MessageKind.Normal, 1, "test");
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => source.EmitAsync(message, cancelled.Token));
+        Assert.HasCount(0, await service.ListAsync());
     }
 
     private sealed class FakeCaptureSource : ICaptureSource
@@ -351,8 +404,8 @@ public sealed class InboxServiceTests
             return Task.CompletedTask;
         }
 
-        public Task EmitAsync(CapturedMessage message) => _batchCaptured is { } handler
-            ? handler(this, CaptureBatch.Single(message), CancellationToken.None)
+        public Task EmitAsync(CapturedMessage message, CancellationToken cancellationToken = default) => _batchCaptured is { } handler
+            ? handler(this, CaptureBatch.Single(message), cancellationToken)
             : Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

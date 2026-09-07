@@ -32,6 +32,76 @@ public sealed class SqliteMessageStoreTests
     }
 
     [TestMethod]
+    public async Task RetentionAndSettings_RollBackTogetherOnWriteFailure()
+    {
+        var now = DateTimeOffset.Now;
+        await using var store = CreateStore();
+        await store.InitializeAsync();
+        await store.SaveSettingsAsync(new AppSettings(RetentionDays: 7));
+        var old = (await store.AddAsync(Message("expired after change", now.AddDays(-3)), 7)).Message;
+        var snoozed = (await store.AddAsync(Message("snoozed", now), 7)).Message;
+        await store.UpdateStateAsync(snoozed.Id, InboxState.Snoozed, now.AddDays(2), now);
+        await using var connection = new SqliteConnection($"Data Source={_database}");
+        await connection.OpenAsync();
+        await using var trigger = connection.CreateCommand();
+        trigger.CommandText = """
+            CREATE TRIGGER fail_settings BEFORE INSERT ON settings BEGIN
+                SELECT RAISE(ABORT, 'synthetic settings failure');
+            END;
+            """;
+        await trigger.ExecuteNonQueryAsync();
+
+        await Assert.ThrowsExactlyAsync<SqliteException>(() => store.SaveSettingsAndApplyRetentionAsync(new AppSettings(RetentionDays: 1), now));
+
+        Assert.AreEqual(7, (await store.GetSettingsAsync()).RetentionDays);
+        Assert.AreEqual(old.ExpiresAt.ToUnixTimeMilliseconds(), (await store.GetAsync(old.Id))!.ExpiresAt.ToUnixTimeMilliseconds());
+        Assert.AreEqual(InboxState.Snoozed, (await store.GetAsync(snoozed.Id))!.State);
+        Assert.HasCount(2, await store.ListAsync());
+    }
+
+    [TestMethod]
+    public async Task RetentionAndSettings_CommitExpiryDeletionAndReminderReleaseTogether()
+    {
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await using var store = CreateStore();
+        await store.InitializeAsync();
+        var expired = (await store.AddAsync(Message("expired", now.AddDays(-3)), 7)).Message;
+        var released = (await store.AddAsync(Message("release", now), 7)).Message;
+        var kept = (await store.AddAsync(Message("keep", now), 7)).Message;
+        await store.UpdateStateAsync(released.Id, InboxState.Snoozed, now.AddDays(1), now);
+        await store.UpdateStateAsync(kept.Id, InboxState.Snoozed, now.AddHours(1), now);
+
+        var cancelled = await store.SaveSettingsAndApplyRetentionAsync(new AppSettings(RetentionDays: 1), now);
+
+        CollectionAssert.AreEquivalent(new[] { expired.Id, released.Id }, cancelled.ToArray());
+        Assert.AreEqual(1, (await store.GetSettingsAsync()).RetentionDays);
+        Assert.IsNull(await store.GetAsync(expired.Id));
+        Assert.AreEqual(InboxState.Inbox, (await store.GetAsync(released.Id))!.State);
+        Assert.IsNull((await store.GetAsync(released.Id))!.SnoozedUntil);
+        Assert.AreEqual(InboxState.Snoozed, (await store.GetAsync(kept.Id))!.State);
+        Assert.AreEqual(now.AddDays(1), (await store.GetAsync(kept.Id))!.ExpiresAt);
+    }
+
+    [TestMethod]
+    public async Task FutureSchema_IsRejectedWithoutDowngradeOrQuarantine()
+    {
+        await using var connection = new SqliteConnection($"Data Source={_database}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version=999; CREATE TABLE future_data(value TEXT); INSERT INTO future_data VALUES('preserved');";
+        await command.ExecuteNonQueryAsync();
+        await using var store = CreateStore();
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.InitializeAsync());
+
+        command.CommandText = "PRAGMA user_version;";
+        Assert.AreEqual(999L, await command.ExecuteScalarAsync());
+        command.CommandText = "SELECT value FROM future_data;";
+        Assert.AreEqual("preserved", await command.ExecuteScalarAsync());
+        Assert.IsFalse(Directory.Exists(Path.Combine(_directory, "quarantine")));
+    }
+
+    [TestMethod]
     public async Task Add_PersistsEncryptedFields_AndDeduplicates()
     {
         const string marker = "DINGLATER_PRIVACY_MARKER_39e4d2";

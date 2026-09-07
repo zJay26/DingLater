@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using DingLater.Core.Models;
 using DingLater.Core.Services;
 
@@ -12,7 +11,18 @@ public sealed class ReminderDueEventArgs(StoredMessage message, bool includePrev
 
 public sealed class WindowsReminderScheduler : IReminderScheduler, IDisposable
 {
-    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _scheduled = new();
+    private static readonly TimeSpan ClockRecheckInterval = TimeSpan.FromMinutes(1);
+    private readonly object _sync = new();
+    private readonly Dictionary<Guid, ScheduledReminder> _scheduled = [];
+    private readonly TimeProvider _timeProvider;
+    private readonly ITimer _timer;
+    private bool _disposed;
+
+    public WindowsReminderScheduler(TimeProvider? timeProvider = null)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _timer = _timeProvider.CreateTimer(OnTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
 
     public event EventHandler<ReminderDueEventArgs>? ReminderDue;
 
@@ -23,71 +33,106 @@ public sealed class WindowsReminderScheduler : IReminderScheduler, IDisposable
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CancelCore(message.Id);
-        var lifetime = new CancellationTokenSource();
-        _scheduled[message.Id] = lifetime;
-        _ = WaitAndNotifyAsync(message, dueAt, includePreview, lifetime);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (message.State != InboxState.Snoozed || dueAt >= message.ExpiresAt)
+            {
+                throw new ArgumentOutOfRangeException(nameof(dueAt), "提醒必须早于消息清理时间，且消息处于稍后提醒状态。");
+            }
+
+            _scheduled[message.Id] = new ScheduledReminder(message, dueAt, includePreview);
+            ArmTimer();
+        }
+
         return Task.CompletedTask;
     }
 
     public Task CancelAsync(Guid messageId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CancelCore(messageId);
+        lock (_sync)
+        {
+            if (!_disposed && _scheduled.Remove(messageId))
+            {
+                ArmTimer();
+            }
+        }
+
         return Task.CompletedTask;
     }
 
     public void Dispose()
     {
-        foreach (var messageId in _scheduled.Keys)
+        lock (_sync)
         {
-            CancelCore(messageId);
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _scheduled.Clear();
+            _timer.Dispose();
         }
     }
 
-    private async Task WaitAndNotifyAsync(
-        StoredMessage message,
-        DateTimeOffset dueAt,
-        bool includePreview,
-        CancellationTokenSource lifetime)
+    private void OnTimer(object? state)
     {
-        try
+        lock (_sync)
         {
-            var delay = dueAt - DateTimeOffset.Now;
-            while (delay > TimeSpan.FromDays(30))
+            if (_disposed)
             {
-                await Task.Delay(TimeSpan.FromDays(30), lifetime.Token).ConfigureAwait(false);
-                delay = dueAt - DateTimeOffset.Now;
+                return;
             }
 
-            if (delay > TimeSpan.Zero)
+            var now = _timeProvider.GetUtcNow();
+            var ready = _scheduled.Values.Where(item => item.DueAt <= now || item.Message.ExpiresAt <= now)
+                .OrderBy(item => item.DueAt).ToList();
+            foreach (var item in ready)
             {
-                await Task.Delay(delay, lifetime.Token).ConfigureAwait(false);
+                // An earlier callback can cancel or replace another item in this batch.
+                if (_disposed || !_scheduled.TryGetValue(item.Message.Id, out var current) || !ReferenceEquals(item, current))
+                {
+                    continue;
+                }
+
+                _scheduled.Remove(item.Message.Id);
+                if (item.Message.ExpiresAt <= now)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    ReminderDue?.Invoke(this, new ReminderDueEventArgs(item.Message, item.IncludePreview));
+                }
+                catch
+                {
+                    // A notification consumer must not terminate the timer or the application.
+                }
             }
 
-            if (!lifetime.IsCancellationRequested)
+            if (!_disposed)
             {
-                ReminderDue?.Invoke(this, new ReminderDueEventArgs(message, includePreview));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            if (_scheduled.TryRemove(new KeyValuePair<Guid, CancellationTokenSource>(message.Id, lifetime)))
-            {
-                lifetime.Dispose();
+                ArmTimer();
             }
         }
     }
 
-    private void CancelCore(Guid messageId)
+    private void ArmTimer()
     {
-        if (_scheduled.TryRemove(messageId, out var existing))
+        var delay = Timeout.InfiniteTimeSpan;
+        if (_scheduled.Count > 0)
         {
-            existing.Cancel();
-            existing.Dispose();
+            delay = _scheduled.Values.Min(item => item.DueAt) - _timeProvider.GetUtcNow();
+            delay = delay <= TimeSpan.Zero ? TimeSpan.Zero
+                : delay > ClockRecheckInterval ? ClockRecheckInterval : delay;
         }
+
+        // Recheck wall time after sleep or clock changes, without one Task/CTS per message.
+        _timer.Change(delay, Timeout.InfiniteTimeSpan);
     }
+
+    private sealed record ScheduledReminder(StoredMessage Message, DateTimeOffset DueAt, bool IncludePreview);
 }

@@ -30,6 +30,8 @@ public partial class App : Application
     private MessageCrypto? _messageCrypto;
     private string? _pendingActivation;
     private bool _exiting;
+    private bool _packageSmokeTest;
+    private string? _smokeDataRoot;
 
     public App()
     {
@@ -46,7 +48,8 @@ public partial class App : Application
 
         if (commandLine.Any(arg => string.Equals(arg, "--package-smoke-test", StringComparison.OrdinalIgnoreCase)))
         {
-            StartPackageSmokeTest();
+            _packageSmokeTest = true;
+            await StartPackageSmokeTestAsync();
             return;
         }
 
@@ -343,7 +346,7 @@ public partial class App : Application
         }
     }
 
-    private void StartPackageSmokeTest()
+    private async Task StartPackageSmokeTestAsync()
     {
         if (_mainWindow is null)
         {
@@ -351,32 +354,65 @@ public partial class App : Application
             return;
         }
 
-        _tray = new TrayIconService();
-        _tray.SetPendingMessages(3, latestMessage: null, includePreview: false);
-
-        _mainWindow.SetContent(new Microsoft.UI.Xaml.Controls.TextBlock
+        // Exercise the shipping shell and its templates using only isolated synthetic data.
+        _smokeDataRoot = Path.Combine(Path.GetTempPath(), "DingLater-PackageSmoke", Guid.NewGuid().ToString("N"));
+        var key = RandomNumberGenerator.GetBytes(32);
+        try
         {
-            Text = "正在验证 DingLater 便携包",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        });
+            _messageCrypto = new MessageCrypto(key);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+
+        var store = new SqliteMessageStore(Path.Combine(_smokeDataRoot, "smoke.db"), _messageCrypto);
+        _reminderScheduler = new WindowsReminderScheduler();
+        _inbox = new InboxService(store, _reminderScheduler, []);
+        await _inbox.InitializeAsync();
+        var now = DateTimeOffset.Now;
+        foreach (var state in new[] { InboxState.Inbox, InboxState.Snoozed, InboxState.Handled })
+        {
+            var result = await store.AddAsync(new CapturedMessage(
+                CaptureSourceKind.Synthetic, now, "示例项目群", "示例联系人",
+                "这是一条合成测试消息，用于验证便携版界面、搜索和提醒显示。", MessageKind.Normal, 1, "package-smoke",
+                SourceIdentity: state.ToString(), ConversationScope: ConversationScope.Group), 7);
+            await store.UpdateStateAsync(result.Message.Id, state, state == InboxState.Snoozed ? now.AddMinutes(30) : null, now);
+        }
+
+        _viewModel = new MainViewModel(_inbox, new StartupService(), action => _mainWindow.Dispatch(action));
+        await _viewModel.RefreshAsync();
+        RebuildShell();
+        _tray = new TrayIconService();
+        _tray.SetPendingMessages(_viewModel.InboxCount, latestMessage: null, includePreview: false);
         _mainWindow.ShowFromBackground();
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _packageSmokeTimer.Interval = TimeSpan.FromSeconds(1);
+        _packageSmokeTimer.Interval = Environment.GetCommandLineArgs().Contains("--interactive-smoke-test", StringComparer.OrdinalIgnoreCase)
+            ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(2);
         _packageSmokeTimer.IsRepeating = false;
-        _packageSmokeTimer.Tick += (_, _) =>
+        _packageSmokeTimer.Tick += async (_, _) =>
         {
             _packageSmokeTimer?.Stop();
-            _tray?.Dispose();
-            _tray = null;
-            _mainWindow.ForceClose();
-            Exit();
+            await ExitApplicationAsync();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (_smokeDataRoot is not null && Directory.Exists(_smokeDataRoot))
+            {
+                Directory.Delete(_smokeDataRoot, recursive: true);
+            }
         };
         _packageSmokeTimer.Start();
     }
 
     private async void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
+        if (_packageSmokeTest)
+        {
+            e.Handled = true;
+            Environment.ExitCode = 1;
+            await ExitApplicationAsync();
+            return;
+        }
+
         if (_mainWindow is null)
         {
             e.Handled = false;

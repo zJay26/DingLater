@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
 using Windows.System;
 using Windows.UI.ViewManagement;
+using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 
 namespace DingLater.App.Views;
 
@@ -15,6 +16,8 @@ public sealed partial class InboxPage : Page
     private readonly MainViewModel _viewModel;
     private readonly UISettings _uiSettings = new();
     private readonly XamlUICommand _quickSnoozeCommand = new();
+    private readonly DispatcherQueueTimer _searchTimer;
+    private Guid? _lastAnimatedMessageId;
     private bool _twoPane;
     private bool _showingDetail;
     private bool _subscribed = true;
@@ -25,6 +28,10 @@ public sealed partial class InboxPage : Page
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = viewModel;
+        _searchTimer = DispatcherQueue.CreateTimer();
+        _searchTimer.Interval = TimeSpan.FromMilliseconds(180);
+        _searchTimer.IsRepeating = false;
+        _searchTimer.Tick += (_, _) => ApplySearch();
         _quickSnoozeCommand.CanExecuteRequested += QuickSnoozeCommand_CanExecuteRequested;
         _quickSnoozeCommand.ExecuteRequested += QuickSnoozeCommand_ExecuteRequested;
         QuickSnoozeButton.Command = _quickSnoozeCommand;
@@ -102,29 +109,31 @@ public sealed partial class InboxPage : Page
         QuickSnoozeButton.IsEnabled = message.ExpiresAt > now;
         ToolTipService.SetToolTip(
             QuickSnoozeButton,
-            rememberedDue <= message.ExpiresAt
+            rememberedDue < message.ExpiresAt
                 ? null
                 : $"当前常用时长超出清理时间 {message.ExpiresAt.LocalDateTime:M月d日 HH:mm}，可从箭头选择更短时长。");
         _quickSnoozeCommand.NotifyCanExecuteChanged();
-        SetAvailability(Preset10Button, now.AddMinutes(10) <= message.ExpiresAt, "10 分钟后晚于消息清理时间。");
-        SetAvailability(Preset15Button, now.AddMinutes(15) <= message.ExpiresAt, "15 分钟后晚于消息清理时间。");
-        SetAvailability(Preset30Button, now.AddMinutes(30) <= message.ExpiresAt, "30 分钟后晚于消息清理时间。");
-        SetAvailability(Preset60Button, now.AddMinutes(60) <= message.ExpiresAt, "60 分钟后晚于消息清理时间。");
+        SetAvailability(Preset10Button, now.AddMinutes(10) < message.ExpiresAt, "10 分钟后晚于消息清理时间。");
+        SetAvailability(Preset15Button, now.AddMinutes(15) < message.ExpiresAt, "15 分钟后晚于消息清理时间。");
+        SetAvailability(Preset30Button, now.AddMinutes(30) < message.ExpiresAt, "30 分钟后晚于消息清理时间。");
+        SetAvailability(Preset60Button, now.AddMinutes(60) < message.ExpiresAt, "60 分钟后晚于消息清理时间。");
         RefreshCustomMinutesAvailability();
         var tomorrow = SnoozeTimeFormatter.TomorrowAtNine(now);
         SetAvailability(
             TomorrowButton,
-            tomorrow <= message.ExpiresAt,
+            tomorrow < message.ExpiresAt,
             $"明早 9:00 晚于这条消息的清理时间 {message.ExpiresAt.LocalDateTime:M月d日 HH:mm}。");
         SetAvailability(
             ExactTimeButton,
             message.ExpiresAt > now,
             "这条消息已经到达清理时间，不能再设置稍后。");
         HandledButton.IsEnabled = message.CanHandle;
-        if (ActionBar.Visibility == Visibility.Visible && _uiSettings.AnimationsEnabled)
+        if (ActionBar.Visibility == Visibility.Visible && _uiSettings.AnimationsEnabled
+            && _lastAnimatedMessageId != message.Id)
         {
             FadeInActionBar();
         }
+        _lastAnimatedMessageId = message.Id;
     }
 
     private void ConversationList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -153,18 +162,33 @@ public sealed partial class InboxPage : Page
     {
         if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
         {
-            sender.ItemsSource = _viewModel.GetSearchSuggestions(sender.Text);
-            _viewModel.SearchText = sender.Text;
-            RefreshFromViewModel();
+            _searchTimer.Stop();
+            _searchTimer.Start();
         }
     }
 
     private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
+        _searchTimer.Stop();
         var value = args.ChosenSuggestion as string ?? args.QueryText;
         sender.Text = value;
         _viewModel.SearchText = value;
         RefreshFromViewModel();
+    }
+
+    private void ApplySearch()
+    {
+        SearchBox.ItemsSource = _viewModel.GetSearchSuggestions(SearchBox.Text);
+        _viewModel.SearchText = SearchBox.Text;
+        RefreshFromViewModel();
+    }
+
+    private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
+    {
+        _searchTimer.Stop();
+        SearchBox.Text = string.Empty;
+        ApplySearch();
+        SearchBox.Focus(FocusState.Programmatic);
     }
 
     private void QuickSnoozeCommand_CanExecuteRequested(XamlUICommand sender, CanExecuteRequestedEventArgs args)
@@ -172,7 +196,7 @@ public sealed partial class InboxPage : Page
         var message = _viewModel.SelectedMessage;
         args.CanExecute = message is not null
                           && _viewModel.Section != InboxSection.Handled
-                          && DateTimeOffset.Now.AddMinutes(_viewModel.QuickSnoozeMinutes) <= message.ExpiresAt;
+                          && DateTimeOffset.Now.AddMinutes(_viewModel.QuickSnoozeMinutes) < message.ExpiresAt;
     }
 
     private async void QuickSnoozeCommand_ExecuteRequested(XamlUICommand sender, ExecuteRequestedEventArgs args) =>
@@ -561,6 +585,8 @@ public sealed partial class InboxPage : Page
 
     private void RefreshEmptyState()
     {
+        ClearSearchButton.Visibility = string.IsNullOrWhiteSpace(_viewModel.SearchText)
+            ? Visibility.Collapsed : Visibility.Visible;
         if (!string.IsNullOrWhiteSpace(_viewModel.SearchText))
         {
             EmptyTitle.Text = "没有匹配的消息";
@@ -633,7 +659,7 @@ public sealed partial class InboxPage : Page
         var minutes = validNumber ? Math.Clamp((int)Math.Round(QuickMinutesBox.Value), 1, 1440) : 0;
         var available = message is not null
                         && validNumber
-                        && DateTimeOffset.Now.AddMinutes(minutes) <= message.ExpiresAt;
+                        && DateTimeOffset.Now.AddMinutes(minutes) < message.ExpiresAt;
         SetAvailability(
             UseQuickMinutesButton,
             available,
@@ -677,6 +703,7 @@ public sealed partial class InboxPage : Page
 
     private void InboxPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _searchTimer.Stop();
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
         _subscribed = false;
     }

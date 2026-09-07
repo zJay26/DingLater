@@ -17,13 +17,14 @@ public sealed class SnoozeTimeFormatterTests
         Assert.AreEqual(expected, SnoozeTimeFormatter.FormatRelativeMinutes(minutes));
 
     [TestMethod]
-    public void Validation_AllowsExpiryBoundary_ButRejectsPastAndAfterExpiry()
+    public void Validation_RequiresReminderStrictlyBeforeExpiry()
     {
         var now = DateTimeOffset.Parse("2026-08-04T10:00:00+08:00");
         var expires = now.AddHours(2);
 
         Assert.IsFalse(SnoozeTimeFormatter.TryValidate(now, expires, now, out _));
-        Assert.IsTrue(SnoozeTimeFormatter.TryValidate(expires, expires, now, out _));
+        Assert.IsTrue(SnoozeTimeFormatter.TryValidate(expires.AddMinutes(-1), expires, now, out _));
+        Assert.IsFalse(SnoozeTimeFormatter.TryValidate(expires, expires, now, out _));
         Assert.IsFalse(SnoozeTimeFormatter.TryValidate(expires.AddMinutes(1), expires, now, out _));
     }
 

@@ -9,7 +9,7 @@ public sealed class ConversationThreadViewModel
 
     public ConversationThreadViewModel(IEnumerable<StoredMessage> messages)
     {
-        _models = messages.OrderByDescending(ConversationPresentation.GetMessageTime).ToList();
+        _models = messages.OrderByDescending(ConversationPresentation.GetMessageTime).ThenBy(message => message.Id).ToList();
         if (_models.Count == 0)
         {
             throw new ArgumentException("A conversation requires at least one message.", nameof(messages));
@@ -19,7 +19,14 @@ public sealed class ConversationThreadViewModel
         Title = ConversationPresentation.GetTitle(_models);
         LatestAt = ConversationPresentation.GetMessageTime(_models[0]);
         LatestAtText = LatestAt.LocalDateTime.ToString("M月d日 HH:mm");
-        Messages = new ObservableCollection<MessageCardViewModel>(_models.Select(message => new MessageCardViewModel(message)));
+        NextReminderAt = _models.Min(message => message.SnoozedUntil) ?? DateTimeOffset.MaxValue;
+        var ordered = _models[0].State == InboxState.Snoozed
+            ? _models.OrderBy(message => message.SnoozedUntil).ThenByDescending(ConversationPresentation.GetMessageTime)
+            : _models.AsEnumerable();
+        Messages = new ObservableCollection<MessageCardViewModel>(ordered.Select(message => new MessageCardViewModel(message)));
+        ReminderText = NextReminderAt == DateTimeOffset.MaxValue
+            ? string.Empty
+            : $"下次提醒：{NextReminderAt.LocalDateTime:M月d日 HH:mm}";
         var latest = Messages[0];
         var hasMultipleSenders = _models.Select(message => message.Captured.Sender)
             .Where(sender => !string.IsNullOrWhiteSpace(sender))
@@ -38,7 +45,13 @@ public sealed class ConversationThreadViewModel
     public string CountText { get; }
     public DateTimeOffset LatestAt { get; }
     public string LatestAtText { get; }
+    public DateTimeOffset NextReminderAt { get; }
+    public string ReminderText { get; }
+    public bool HasReminder => NextReminderAt != DateTimeOffset.MaxValue;
     public ObservableCollection<MessageCardViewModel> Messages { get; }
+
+    internal bool HasSameMessages(IEnumerable<StoredMessage> messages) =>
+        _models.SequenceEqual(messages.OrderByDescending(ConversationPresentation.GetMessageTime).ThenBy(message => message.Id));
 
     public bool Matches(string query)
     {

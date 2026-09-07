@@ -10,6 +10,99 @@ namespace DingLater.Tests;
 public sealed class MainViewModelTests
 {
     [TestMethod]
+    public async Task RefreshAndSearch_ReuseUnchangedConversationsAndMessages()
+    {
+        var store = new MutableStore();
+        store.Messages.Add(Stored("group", "person", "needle", ConversationScope.Group, DateTimeOffset.Now));
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.RefreshAsync();
+        var conversation = viewModel.SelectedConversation;
+        var message = viewModel.SelectedMessage;
+        var changes = 0;
+        viewModel.Conversations.CollectionChanged += (_, _) => changes++;
+
+        await viewModel.RefreshAsync();
+        viewModel.SearchText = "  needle  ";
+
+        Assert.AreSame(conversation, viewModel.SelectedConversation);
+        Assert.AreSame(message, viewModel.SelectedMessage);
+        Assert.AreEqual(0, changes);
+        Assert.AreEqual(1, viewModel.InboxCount);
+        viewModel.SearchText = "missing";
+        viewModel.SearchText = string.Empty;
+        Assert.AreSame(conversation, viewModel.SelectedConversation);
+    }
+
+    [TestMethod]
+    public async Task RefreshBurst_CoalescesReadsWithoutDroppingChanges()
+    {
+        var store = new MutableStore();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.BeforeList = async () =>
+        {
+            started.TrySetResult();
+            await release.Task;
+        };
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        var first = viewModel.RefreshAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var pending = Enumerable.Range(0, 40).Select(_ => viewModel.RefreshAsync()).ToArray();
+        store.Messages.Add(Stored("group", "person", "new", ConversationScope.Group, DateTimeOffset.Now));
+        release.SetResult();
+        await Task.WhenAll(pending.Append(first)).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(2, store.ListCount);
+        Assert.AreEqual(1, viewModel.InboxCount);
+        Assert.IsFalse(viewModel.IsBusy);
+    }
+
+    [TestMethod]
+    public async Task Dispose_DuringRefreshSuppressesLateUiUpdates()
+    {
+        var store = new MutableStore();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.BeforeList = async () => { started.TrySetResult(); await release.Task; };
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        var viewModel = new MainViewModel(inbox, new StartupService());
+        var refresh = viewModel.RefreshAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.Dispose();
+        var changes = 0;
+        viewModel.PropertyChanged += (_, _) => changes++;
+        release.SetResult();
+        await refresh.WaitAsync(TimeSpan.FromSeconds(5));
+        await viewModel.RefreshAsync();
+        Assert.AreEqual(0, changes);
+        Assert.AreEqual(1, store.ListCount);
+    }
+
+    [TestMethod]
+    public async Task SnoozedSection_SortsConversationsAndMessagesByNextReminder()
+    {
+        var now = DateTimeOffset.Now;
+        var store = new MutableStore();
+        var later = Stored("group", "person", "later", ConversationScope.Group, now) with
+        { State = InboxState.Snoozed, SnoozedUntil = now.AddHours(3) };
+        var earlier = Stored("group", "person", "earlier", ConversationScope.Group, now.AddMinutes(-3)) with
+        { State = InboxState.Snoozed, SnoozedUntil = now.AddHours(1) };
+        var other = Stored("other", "person", "other", ConversationScope.Group, now.AddMinutes(1)) with
+        { State = InboxState.Snoozed, SnoozedUntil = now.AddHours(2) };
+        store.Messages.AddRange([later, other, earlier]);
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.RefreshAsync();
+        viewModel.Section = InboxSection.Snoozed;
+
+        Assert.AreEqual("group", viewModel.Conversations[0].Key);
+        Assert.AreEqual(earlier.Id, viewModel.SelectedMessage?.Id);
+        Assert.AreEqual(earlier.SnoozedUntil, viewModel.SelectedConversation?.NextReminderAt);
+    }
+
+    [TestMethod]
     public async Task Refresh_GroupsSortsSearchesAndPreservesSelection()
     {
         var now = DateTimeOffset.Parse("2026-08-04T16:00:00+08:00");
@@ -65,8 +158,10 @@ public sealed class MainViewModelTests
         using var viewModel = new MainViewModel(inbox, new StartupService());
         await viewModel.RefreshAsync();
 
+        viewModel.SearchText = "does not match";
         viewModel.SelectFromActivation(snoozed.Id);
 
+        Assert.AreEqual(string.Empty, viewModel.SearchText);
         Assert.AreEqual(InboxSection.Snoozed, viewModel.Section);
         Assert.AreEqual(snoozed.Id, viewModel.SelectedMessage?.Id);
     }
@@ -162,13 +257,23 @@ public sealed class MainViewModelTests
         public List<StoredMessage> Messages { get; } = [];
         public AppSettings Settings { get; private set; } = new();
         public bool FailSettingsSave { get; set; }
+        public Func<Task>? BeforeList { get; set; }
+        public int ListCount { get; private set; }
 
         public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<StoreResult> AddAsync(CapturedMessage message, int retentionDays, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<CaptureBatchResult> AppendCaptureBatchAsync(CaptureBatch batch, int retentionDays, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyDictionary<int, long>> GetCaptureCheckpointsAsync(CaptureSourceKind source, string accountFingerprint, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<StoredMessage>> ListAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<StoredMessage>>(Messages.ToList());
+        public async Task<IReadOnlyList<StoredMessage>> ListAsync(CancellationToken cancellationToken = default)
+        {
+            ListCount++;
+            if (BeforeList is not null)
+            {
+                await BeforeList();
+            }
+
+            return Messages.ToList();
+        }
 
         public Task<StoredMessage?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult(Messages.FirstOrDefault(message => message.Id == id));
@@ -210,6 +315,12 @@ public sealed class MainViewModelTests
             Task.FromResult<IReadOnlyList<Guid>>([]);
 
         public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Settings);
+
+        public async Task<IReadOnlyList<Guid>> SaveSettingsAndApplyRetentionAsync(AppSettings settings, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            await SaveSettingsAsync(settings, cancellationToken);
+            return [];
+        }
 
         public Task SaveSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)
         {

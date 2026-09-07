@@ -47,7 +47,6 @@
                 PlaceholderText="搜索对象、发送者或正文"
                 QueryIcon="Find"
                 QuerySubmitted="SearchBox_QuerySubmitted"
-                Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                 TextChanged="SearchBox_TextChanged" />
         </Grid>
 
@@ -90,6 +89,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock
                                         MaxLines="1"
@@ -112,6 +112,13 @@
                                         VerticalAlignment="Bottom"
                                         Style="{StaticResource DingSecondaryTextStyle}"
                                         Text="{x:Bind CountText}" />
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Grid.ColumnSpan="2"
+                                        Foreground="{ThemeResource DingAccentBrush}"
+                                        Style="{StaticResource DingSecondaryTextStyle}"
+                                        Text="{x:Bind ReminderText}"
+                                        Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasReminder)}" />
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -394,6 +401,13 @@
                         Style="{StaticResource DingSecondaryTextStyle}"
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
+                    <Button
+                        x:Name="ClearSearchButton"
+                        HorizontalAlignment="Center"
+                        Click="ClearSearchButton_Click"
+                        Content="清除搜索"
+                        Style="{StaticResource DingQuietButtonStyle}"
+                        Visibility="Collapsed" />
                 </StackPanel>
             </Border>
         </Grid>
