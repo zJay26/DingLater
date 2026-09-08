@@ -35,20 +35,20 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 普通用户只需要下面几步：
 
 1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
-2. 下载名称类似 `DingLater-2.3.0-win-x64-portable.zip` 的 ZIP 文件。
+2. 下载名称类似 `DingLater-2.4.0-win-x64-portable.zip` 的 ZIP 文件。
 3. 把 ZIP **完整解压到一个新文件夹**，等待解压结束，然后双击里面的 `DingLater.exe`。不能直接在压缩包内运行。
 4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
 
 便携版不用安装，也不需要管理员权限。最好先用 `SHA256SUMS.txt` 校验下载文件，再运行程序。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名。
 
-v2.3.0 提升了消息刷新、搜索和提醒的稳定性：“稍后提醒”按最近到期时间排序，点击提醒可直接定位消息；留存期设置和消息清理采用事务提交。参见[本次更新说明](docs/releases/v2.3.0.md)。
+v2.4.0 新增可选自动更新：默认每 6 小时检查一次，可关闭；你可以选择下载目录、跳过版本，并在下载校验完成后自行决定何时重启更新。参见[本次更新说明](docs/releases/v2.4.0.md)。旧版用户需先手动下载本次版本，之后即可使用应用内更新。
 
 如果无法启动，在解压目录打开 PowerShell，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\Verify-Portable.ps1`。它会逐文件检查完整性，报告缺失或损坏的依赖；需要保留 ZIP 内全部文件，不能只复制 EXE。
 
 校验方法：把 ZIP 和 `SHA256SUMS.txt` 放在同一个文件夹，在该文件夹打开 PowerShell，运行下面的命令（文件名不同时请替换第一行）：
 
 ```powershell
-$zip = ".\DingLater-2.3.0-win-x64-portable.zip"
+$zip = ".\DingLater-2.4.0-win-x64-portable.zip"
 $expected = (Get-Content .\SHA256SUMS.txt).Trim().Split()[0].ToLower()
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校验失败，请重新下载" }
@@ -77,7 +77,9 @@ if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校�
 - 捕获和稍后到期提醒依赖 DingLater 在前台或托盘中运行；点击窗口右上角“×”只会隐藏界面并继续在托盘运行，只有右键托盘图标选择“退出 DingLater”才会真正结束进程。
 - Windows 通知可按设置显示会话、发送者和正文预览，但操作系统可能截断长预览；点击通知只打开 DingLater 中保存的完整项目，不打开钉钉。
 - 默认留存 7 天，可设置 1–365 天；正文、联系人、会话名和来源标识逐记录 AES-256-GCM 加密，主密钥由 DPAPI `CurrentUser` 保护。
-- 没有 HTTP/WebSocket、机器人/OpenAPI、遥测或云同步。
+- 更新检查仅通过 HTTPS 读取本项目 GitHub 正式 Release；下载必须由用户点击，校验通过后仍需确认才会退出并应用更新。可在“设置 → 软件更新”关闭定时检查、手动检查、跳过版本或更改下载目录。
+- 默认下载到 `%USERPROFILE%\Downloads\DingLater`，每次使用独立子目录保存 ZIP 与完整解压文件。更新前备份旧程序到程序目录下的 `.dinglater-backup`，保留原程序路径、快捷方式、登录启动项和本地消息设置；应用文件替换失败会尝试恢复旧程序。
+- 不连接钉钉网络，没有机器人/OpenAPI、遥测或云同步；更新请求不包含消息、账号、诊断或设备标识。
 
 当前只保证 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式。版本变化但结构探测仍完全匹配时可以继续运行；加密、WAL 或 schema 任一检查失败都会停止捕获并显示诊断，不会切换到注入、进程内存读取或窗口自动化。
 
@@ -95,7 +97,7 @@ $env:DOTNET_CLI_HOME="$PWD\.tools\cli-home"
 $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 .\.tools\dotnet\dotnet.exe restore .\DingLater.slnx --locked-mode
 .\.tools\dotnet\dotnet.exe test .\DingLater.slnx -c Release
-.\scripts\Build-Portable.ps1 -Version 2.3.0
+.\scripts\Build-Portable.ps1 -Version 2.4.0
 ```
 
 最新本地测试版始终位于 `BuildOutput\DingLater.exe`，也可以直接双击仓库根目录的 `启动最新版本.cmd`。每次执行构建脚本都会覆盖这个固定目录，不再创建按日期变化的发布目录；ZIP 和 `SHA256SUMS.txt` 也放在同一目录。只有明确设置 `DINGLATER_DEMO=1` 或传入 `--demo` 的 Debug 运行才使用合成消息；普通 Debug/Release 都使用真实只读 V3 来源，Release 会忽略这两个测试入口。

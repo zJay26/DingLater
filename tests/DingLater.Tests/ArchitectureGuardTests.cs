@@ -4,7 +4,7 @@ namespace DingLater.Tests;
 public sealed class ArchitectureGuardTests
 {
     [TestMethod]
-    public void RuntimeSource_DoesNotContainInteractionOrNetworkApis()
+    public void RuntimeSource_DoesNotContainInteractionApis_AndOnlyUpdaterMayUseHttp()
     {
         var root = FindRepositoryRoot();
         var sourceFiles = Directory.GetFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories);
@@ -45,6 +45,11 @@ public sealed class ArchitectureGuardTests
             var text = File.ReadAllText(file);
             foreach (var symbol in banned)
             {
+                if (symbol == "HttpClient" && string.Equals(file, Path.Combine(root, "src", "DingLater.Core", "Updates", "GitHubUpdateClient.cs"), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 Assert.IsFalse(text.Contains(symbol, StringComparison.Ordinal), $"Banned runtime symbol '{symbol}' appears in {Path.GetRelativePath(root, file)}");
             }
         }

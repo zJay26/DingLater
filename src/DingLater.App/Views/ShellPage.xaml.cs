@@ -11,14 +11,17 @@ public sealed partial class ShellPage : Page
     private readonly MainViewModel _viewModel;
     private readonly InboxPage _inboxPage;
     private readonly SettingsPage _settingsPage;
+    private readonly UpdateViewModel _updates;
 
-    public ShellPage(MainViewModel viewModel)
+    public ShellPage(MainViewModel viewModel, UpdateViewModel updates)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _updates = updates;
         DataContext = viewModel;
         _inboxPage = new InboxPage(viewModel);
-        _settingsPage = new SettingsPage(viewModel);
+        _settingsPage = new SettingsPage(viewModel, updates);
+        _updates.PropertyChanged += Updates_PropertyChanged;
         _viewModel.ErrorOccurred += ViewModel_ErrorOccurred;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         Unloaded += ShellPage_Unloaded;
@@ -36,6 +39,7 @@ public sealed partial class ShellPage : Page
 
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
+        RefreshUpdateNotice();
         RefreshCaptureStatus();
         RefreshNavigationCounts();
         if (_viewModel.IsSettingsPage)
@@ -148,7 +152,27 @@ public sealed partial class ShellPage : Page
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _updates.PropertyChanged -= Updates_PropertyChanged;
         _viewModel.ErrorOccurred -= ViewModel_ErrorOccurred;
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    private void Updates_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RefreshUpdateNotice();
+
+    private void RefreshUpdateNotice()
+    {
+        UpdateInfoBar.Title = _updates.AvailableVersionText;
+        UpdateInfoBar.IsOpen = _updates.ShowNotice;
+    }
+
+    private void UpdateInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args) => _updates.DismissNotice();
+
+    private void ViewUpdateButton_Click(object sender, RoutedEventArgs e)
+        => OpenSettings();
+
+    internal void OpenSettings()
+    {
+        Navigation.SelectedItem = Navigation.SettingsItem;
+        _settingsPage.ShowUpdates();
     }
 }

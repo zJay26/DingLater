@@ -3,7 +3,7 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
     [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
-    [string]$Version = '2.3.0',
+    [string]$Version = '2.4.0',
     [string]$DotnetPath = ''
 )
 
@@ -93,6 +93,7 @@ try {
     Compress-Archive -Path (Join-Path $publishRoot '*') -DestinationPath $temporaryZip -CompressionLevel Optimal
     $hash = (Get-FileHash -LiteralPath $temporaryZip -Algorithm SHA256).Hash.ToLowerInvariant()
     & (Join-Path $PSScriptRoot 'Test-PortablePackage.ps1') -PackagePath $temporaryZip -ExpectedSha256 $hash -ExpectedVersion $Version -TestValidationFailures
+    & (Join-Path $PSScriptRoot 'Test-UpdateHandoff.ps1') -PackagePath $temporaryZip -ExpectedVersion $Version
     Copy-Item -LiteralPath $temporaryZip -Destination $publishRoot
     "$hash *$zipName" | Set-Content -LiteralPath (Join-Path $publishRoot 'SHA256SUMS.txt') -Encoding ascii
 

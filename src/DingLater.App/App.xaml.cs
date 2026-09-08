@@ -11,6 +11,7 @@ using DingLater.Core.Models;
 using DingLater.Core.Security;
 using DingLater.Core.Services;
 using DingLater.Core.Storage;
+using DingLater.Core.Updates;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -21,6 +22,7 @@ public partial class App : Application
     private SingleInstanceCoordinator? _singleInstance;
     private InboxService? _inbox;
     private MainViewModel? _viewModel;
+    private UpdateViewModel? _updates;
     private MainWindow? _mainWindow;
     private ShellPage? _shellPage;
     private TrayIconService? _tray;
@@ -42,6 +44,24 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var commandLine = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (commandLine is ["--apply-update", var requestPath])
+        {
+            try
+            {
+                await UpdateHandoff.ApplyAsync(requestPath);
+            }
+            catch (Exception exception)
+            {
+                _mainWindow = new MainWindow();
+                _mainWindow.Activate();
+                await _mainWindow.ShowErrorAsync("DingLater 更新未完成", exception.Message);
+                _mainWindow.ForceClose();
+            }
+
+            Exit();
+            return;
+        }
+
         _mainWindow = new MainWindow();
         _mainWindow.HideRequested += MainWindow_HideRequested;
         _mainWindow.Activate();
@@ -50,6 +70,27 @@ public partial class App : Application
         {
             _packageSmokeTest = true;
             await StartPackageSmokeTestAsync();
+            var handoffIndex = Array.IndexOf(commandLine, "--update-handoff-smoke-test");
+            if (handoffIndex >= 0 && handoffIndex + 1 < commandLine.Length)
+            {
+                _packageSmokeTimer?.Stop();
+                try
+                {
+                    var source = Path.GetFullPath(commandLine[handoffIndex + 1]);
+                    var manifest = await PortableUpdatePackage.ReadManifestAsync(source, CancellationToken.None);
+                    var version = Version.Parse(manifest.Version);
+                    var release = new UpdateRelease(version, new Uri(GitHubUpdateClient.RepositoryUrl), new Uri(GitHubUpdateClient.RepositoryUrl), "smoke.zip", 1, new string('0', 64));
+                    await UpdateHandoff.StartAsync(new PreparedUpdate(release, Path.Combine(source, "smoke.zip"), source));
+                }
+                catch (Exception exception)
+                {
+                    Environment.ExitCode = 1;
+                    await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, "handoff-smoke.error"), exception.Message);
+                }
+
+                await ExitApplicationAsync();
+            }
+
             return;
         }
 
@@ -138,6 +179,7 @@ public partial class App : Application
             _viewModel = new MainViewModel(_inbox, startupService, _mainWindow.Dispatch);
             _viewModel.FontScaleChanged += ViewModel_FontScaleChanged;
             await _viewModel.InitializeAsync();
+            CreateUpdateViewModel();
             RebuildShell();
 
             _tray = new TrayIconService();
@@ -166,8 +208,19 @@ public partial class App : Application
 #endif
             _maintenanceTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
             _maintenanceTimer.Interval = TimeSpan.FromMinutes(1);
-            _maintenanceTimer.Tick += async (_, _) => await _inbox.RunMaintenanceAsync();
+            _maintenanceTimer.Tick += async (_, _) =>
+            {
+                await _inbox.RunMaintenanceAsync();
+                if (!demoMode && _updates is not null)
+                {
+                    await _updates.CheckIfDueAsync();
+                }
+            };
             _maintenanceTimer.Start();
+            if (!demoMode)
+            {
+                _ = _updates!.CheckIfDueAsync();
+            }
 
             if (startupLaunch)
             {
@@ -198,8 +251,20 @@ public partial class App : Application
             return;
         }
 
-        _shellPage = new ShellPage(_viewModel);
+        _shellPage = new ShellPage(_viewModel, _updates!);
         _mainWindow.SetContent(_shellPage);
+    }
+
+    private void CreateUpdateViewModel()
+    {
+        var version = typeof(App).Assembly.GetName().Version!;
+        _updates = new UpdateViewModel(new GitHubUpdateClient(), new Version(version.Major, version.Minor, version.Build),
+            () => _viewModel!.Settings, mutation => _viewModel!.SaveSettingAsync(mutation));
+        _updates.InstallRequested = async update =>
+        {
+            await UpdateHandoff.StartAsync(update);
+            await ExitApplicationAsync();
+        };
     }
 
     private void ViewModel_FontScaleChanged(object? sender, UiFontScale scale)
@@ -210,6 +275,11 @@ public partial class App : Application
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(MainViewModel.Settings))
+        {
+            _updates?.SettingsChanged();
+        }
+
         if (args.PropertyName is nameof(MainViewModel.InboxCount)
             or nameof(MainViewModel.LatestInboxMessage)
             or nameof(MainViewModel.Settings))
@@ -299,6 +369,7 @@ public partial class App : Application
         {
             _maintenanceTimer?.Stop();
             _packageSmokeTimer?.Stop();
+            _updates?.Dispose();
             if (_reminderScheduler is not null)
             {
                 _reminderScheduler.ReminderDue -= ReminderScheduler_ReminderDue;
@@ -382,17 +453,28 @@ public partial class App : Application
 
         _viewModel = new MainViewModel(_inbox, new StartupService(), action => _mainWindow.Dispatch(action));
         await _viewModel.RefreshAsync();
+        CreateUpdateViewModel();
         RebuildShell();
         _tray = new TrayIconService();
         _tray.SetPendingMessages(_viewModel.InboxCount, latestMessage: null, includePreview: false);
         _mainWindow.ShowFromBackground();
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _packageSmokeTimer.Interval = Environment.GetCommandLineArgs().Contains("--interactive-smoke-test", StringComparer.OrdinalIgnoreCase)
+        var interactive = Environment.GetCommandLineArgs().Contains("--interactive-smoke-test", StringComparer.OrdinalIgnoreCase);
+        var settingsVisited = false;
+        _packageSmokeTimer.Interval = interactive
             ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(2);
         _packageSmokeTimer.IsRepeating = false;
         _packageSmokeTimer.Tick += async (_, _) =>
         {
             _packageSmokeTimer?.Stop();
+            if (!interactive && !settingsVisited)
+            {
+                settingsVisited = true;
+                _shellPage?.OpenSettings();
+                _packageSmokeTimer?.Start();
+                return;
+            }
+
             await ExitApplicationAsync();
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (_smokeDataRoot is not null && Directory.Exists(_smokeDataRoot))

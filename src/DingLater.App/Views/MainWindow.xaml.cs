@@ -90,16 +90,11 @@ public sealed partial class MainWindow : Window
     {
         if (RootGrid.XamlRoot is null)
         {
-            ContentHost.Content = new InfoBar
-            {
-                IsOpen = true,
-                IsClosable = false,
-                Severity = InfoBarSeverity.Error,
-                Title = title,
-                Message = message,
-                Margin = new Thickness(24)
-            };
-            return;
+            var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnLoaded(object sender, RoutedEventArgs args) => loaded.TrySetResult();
+            RootGrid.Loaded += OnLoaded;
+            try { await loaded.Task; }
+            finally { RootGrid.Loaded -= OnLoaded; }
         }
 
         var dialog = new ContentDialog

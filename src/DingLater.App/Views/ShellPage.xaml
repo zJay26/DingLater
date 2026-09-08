@@ -95,6 +95,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <InfoBar
@@ -102,9 +103,22 @@
                 Margin="12,8,12,0"
                 IsOpen="False"
                 Severity="Error" />
+            <InfoBar
+                x:Name="UpdateInfoBar"
+                Grid.Row="1"
+                Margin="12,8,12,0"
+                Closed="UpdateInfoBar_Closed"
+                IsOpen="False"
+                IsClosable="True"
+                Message="可在设置中选择下载更新，也可以继续使用当前版本。"
+                Severity="Informational">
+                <InfoBar.ActionButton>
+                    <Button Click="ViewUpdateButton_Click" Content="查看更新" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <ContentControl
                 x:Name="PageHost"
-                Grid.Row="1"
+                Grid.Row="2"
                 HorizontalContentAlignment="Stretch"
                 VerticalContentAlignment="Stretch" />
         </Grid>
