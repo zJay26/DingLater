@@ -72,6 +72,23 @@
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
 
+                <controls:SettingsExpander Header="窗口置顶" IsExpanded="True">
+                    <controls:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE718;" />
+                    </controls:SettingsExpander.HeaderIcon>
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="启用窗口置顶" Description="按 Ctrl + Win + T 置顶当前窗口，再按一次取消。置顶窗口显示描边，不播放音效。">
+                            <ToggleSwitch x:Name="AlwaysOnTopToggle" AutomationProperties.Name="启用窗口置顶" Toggled="AlwaysOnTopToggle_Toggled" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="退出时取消置顶" Description="正常退出 DingLater 时，取消本次由它设置的置顶。关闭功能开关会立即取消这些置顶。">
+                            <ToggleSwitch x:Name="RestoreTopmostToggle" AutomationProperties.Name="退出时取消置顶" Toggled="RestoreTopmostToggle_Toggled" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="快捷键状态" ContentAlignment="Vertical">
+                            <InfoBar x:Name="TopmostInfoBar" IsOpen="True" IsClosable="False" Severity="Informational" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+
                 <controls:SettingsExpander Header="外观" IsExpanded="True">
                     <controls:SettingsExpander.HeaderIcon>
                         <FontIcon Glyph="&#xE790;" />

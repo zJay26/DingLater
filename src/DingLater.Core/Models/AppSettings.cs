@@ -15,7 +15,9 @@ public sealed record AppSettings(
     bool AutomaticallyCheckUpdates = true,
     string UpdateDownloadDirectory = "",
     DateTimeOffset? LastUpdateCheckUtc = null,
-    string SkippedUpdateVersion = "")
+    string SkippedUpdateVersion = "",
+    bool AlwaysOnTopEnabled = true,
+    bool RestoreTopmostOnExit = true)
 {
     public AppSettings Normalize() => this with
     {

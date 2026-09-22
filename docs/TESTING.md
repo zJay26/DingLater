@@ -20,7 +20,9 @@ $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 - schema 2→3 原位迁移、Direct/Group/Unknown 标题规则和纯数字旧会话名；
 - 会话分组、排序、搜索、选择保持、提醒激活定位、分钟级稍后格式，以及托盘数量角标/隐私摘要文本；
 - 四档字号序列化、非法设置归一化与即时保存失败回滚；
-- 架构守卫禁止钉钉文件写入、进程内存 API 和界面操作；仅允许独立的 `GitHubUpdateClient` 使用 HTTP，其他运行时代码仍禁止网络客户端，并固定“窗口 × 隐藏到托盘、托盘退出才结束进程”的生命周期边界。
+- 架构守卫禁止钉钉文件写入、进程内存 API 和输入/激活操作；仅允许独立的窗口置顶模块使用窗口层级 API、`GitHubUpdateClient` 使用 HTTP，其他运行时代码仍禁止这些 API，并固定“窗口 × 隐藏到托盘、托盘退出才结束进程”的生命周期边界。
+- `AlwaysOnTopTests` 在独立 STA 线程创建临时原生窗口，覆盖多窗口切换、描边空心区域/鼠标穿透样式、移动与大小跟随、最小化/恢复、销毁清理、外部取消置顶、退出选项、原有置顶保留、快捷键释放与冲突恢复。测试快捷键使用 `Ctrl + Alt + Shift + F24`，不占用用户的 `Ctrl + Win + T`，也不操作用户已有窗口。
+- 界面验收可启动 `DingLater.exe --package-smoke-test --interactive-smoke-test --topmost-smoke-test`：使用隔离合成数据并启用测试快捷键 `Ctrl + Alt + Shift + T`，覆盖实际全局按键、Windows 消息分发和描边显示；普通运行仍固定为 `Ctrl + Win + T`。不带 `--topmost-smoke-test` 的包冒烟不注册快捷键。
 - 便携构建校验 ZIP 完整解压后的全部发布文件、PRI/XBF、真实窗口句柄和退出码；窗口显示真实 Shell、消息模板、托盘及隔离的合成数据。关闭到托盘的代码路径另由架构守卫覆盖，不将其描述为 GUI 自动化验收。
 
 v2.3.0 新增回归：

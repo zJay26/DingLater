@@ -4,6 +4,7 @@ using System.ComponentModel;
 using DingLater.App.Capture;
 #endif
 using DingLater.App.Services;
+using DingLater.App.Services.AlwaysOnTop;
 using DingLater.App.ViewModels;
 using DingLater.App.Views;
 using DingLater.Core.Capture.DingTalkDatabase;
@@ -26,6 +27,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private ShellPage? _shellPage;
     private TrayIconService? _tray;
+    private AlwaysOnTopService? _alwaysOnTop;
     private DispatcherQueueTimer? _maintenanceTimer;
     private DispatcherQueueTimer? _packageSmokeTimer;
     private WindowsReminderScheduler? _reminderScheduler;
@@ -193,6 +195,7 @@ public partial class App : Application
             _tray.MessageOpenRequested += (_, id) => _mainWindow.Dispatch(() => OpenMessage(id));
             _tray.SetPaused(_inbox.Settings.CapturePaused);
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+            InitializeAlwaysOnTop();
             UpdateTrayStatus();
             _reminderScheduler.ReminderDue += ReminderScheduler_ReminderDue;
             await _inbox.RestoreReminderScheduleAsync();
@@ -278,6 +281,7 @@ public partial class App : Application
         if (args.PropertyName == nameof(MainViewModel.Settings))
         {
             _updates?.SettingsChanged();
+            ApplyAlwaysOnTopSettings();
         }
 
         if (args.PropertyName is nameof(MainViewModel.InboxCount)
@@ -300,6 +304,43 @@ public partial class App : Application
             _viewModel.LatestInboxMessage,
             _viewModel.Settings.ShowReminderPreview);
     }
+
+    private void InitializeAlwaysOnTop()
+    {
+        if (_mainWindow is null || _viewModel is null) return;
+        var smokeHotkey = IsTopmostSmokeTest();
+        _alwaysOnTop = new AlwaysOnTopService(
+            WinRT.Interop.WindowNative.GetWindowHandle(_mainWindow),
+            action => _mainWindow.DispatcherQueue.TryEnqueue(() => action()),
+            modifiers: smokeHotkey ? 0x0007u : 0x000Au,
+            key: 0x54u);
+        _alwaysOnTop.StatusChanged += (_, status) =>
+        {
+            _viewModel.SetAlwaysOnTopStatus(status.Message, status.IsError);
+            if (status.IsError) _tray?.ShowUtilityError(status.Message);
+        };
+        if (_tray is not null)
+        {
+            _tray.UtilitySettingsRequested += (_, _) => _mainWindow.Dispatch(() =>
+            {
+                _mainWindow.ShowFromBackground();
+                _shellPage?.OpenSettings();
+            });
+        }
+
+        ApplyAlwaysOnTopSettings();
+        _viewModel.SetAlwaysOnTopStatus(_alwaysOnTop.Status.Message, _alwaysOnTop.Status.IsError);
+    }
+
+    private void ApplyAlwaysOnTopSettings()
+    {
+        if (_alwaysOnTop is null || _viewModel is null) return;
+        _alwaysOnTop.RestoreOnExit = _viewModel.Settings.RestoreTopmostOnExit;
+        _alwaysOnTop.SetEnabled(_viewModel.Settings.AlwaysOnTopEnabled);
+    }
+
+    private bool IsTopmostSmokeTest() => _packageSmokeTest
+        && Environment.GetCommandLineArgs().Contains("--topmost-smoke-test", StringComparer.OrdinalIgnoreCase);
 
     private static void ApplyTypography(UiFontScale scale)
     {
@@ -370,6 +411,8 @@ public partial class App : Application
             _maintenanceTimer?.Stop();
             _packageSmokeTimer?.Stop();
             _updates?.Dispose();
+            _alwaysOnTop?.Dispose();
+            _alwaysOnTop = null;
             if (_reminderScheduler is not null)
             {
                 _reminderScheduler.ReminderDue -= ReminderScheduler_ReminderDue;
@@ -441,6 +484,9 @@ public partial class App : Application
         _reminderScheduler = new WindowsReminderScheduler();
         _inbox = new InboxService(store, _reminderScheduler, []);
         await _inbox.InitializeAsync();
+        // Package/UI checks must not steal the resident app's shortcut.
+        await _inbox.SaveSettingsAsync(_inbox.Settings with { AlwaysOnTopEnabled = IsTopmostSmokeTest() }, applyRetention: false);
+        if (IsTopmostSmokeTest()) _mainWindow.Title = "DingLater · 窗口置顶测试（合成数据）";
         var now = DateTimeOffset.Now;
         foreach (var state in new[] { InboxState.Inbox, InboxState.Snoozed, InboxState.Handled })
         {
@@ -456,6 +502,8 @@ public partial class App : Application
         CreateUpdateViewModel();
         RebuildShell();
         _tray = new TrayIconService();
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        InitializeAlwaysOnTop();
         _tray.SetPendingMessages(_viewModel.InboxCount, latestMessage: null, includePreview: false);
         _mainWindow.ShowFromBackground();
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();

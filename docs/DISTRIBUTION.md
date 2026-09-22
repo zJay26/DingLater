@@ -3,14 +3,14 @@
 DingLater 默认发布为自包含 `win-x64` ZIP，不使用 MSIX；ZIP 同时包含 .NET 与 Windows App Runtime，不要求目标机另行安装运行时：
 
 ```powershell
-.\scripts\Build-Portable.ps1 -Configuration Release -Version 2.4.0
+.\scripts\Build-Portable.ps1 -Configuration Release -Version 2.5.0
 ```
 
 脚本执行 locked restore、测试、自包含 publish、逐文件 SHA-256 清单生成、ZIP 压缩和全包 SHA-256 生成；随后将 ZIP 解压到独立目录，验证每个文件，再启动解压后的 EXE 检查真实窗口和退出码。测试使用隔离的合成消息，不访问真实钉钉或用户消息库。只有这些步骤成功后，才替换固定输出目录：
 
 ```text
 BuildOutput\DingLater.exe
-BuildOutput\DingLater-2.4.0-win-x64-portable.zip
+BuildOutput\DingLater-2.5.0-win-x64-portable.zip
 BuildOutput\SHA256SUMS.txt
 BuildOutput\package-files.json
 BuildOutput\Verify-Portable.ps1
@@ -21,9 +21,9 @@ BuildOutput\Verify-Portable.ps1
 构建还会模拟缺失 `System.Private.CoreLib.dll` 和同尺寸 XAML 文件损坏，确认完整性检查能拒绝这两种包。独立复验已有 ZIP：
 
 ```powershell
-$zip = '.\BuildOutput\DingLater-2.4.0-win-x64-portable.zip'
+$zip = '.\BuildOutput\DingLater-2.5.0-win-x64-portable.zip'
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-.\scripts\Test-PortablePackage.ps1 -PackagePath $zip -ExpectedSha256 $hash -ExpectedVersion 2.4.0
+.\scripts\Test-PortablePackage.ps1 -PackagePath $zip -ExpectedSha256 $hash -ExpectedVersion 2.5.0
 ```
 
 用户可在完整解压目录运行：

@@ -30,10 +30,15 @@ public sealed partial class SettingsPage : Page
         Loaded += (_, _) =>
         {
             _updates.PropertyChanged += Updates_PropertyChanged;
+            _viewModel.PropertyChanged += MainViewModel_PropertyChanged;
             UpdateResponsiveWidth();
             RefreshControls();
         };
-        Unloaded += (_, _) => _updates.PropertyChanged -= Updates_PropertyChanged;
+        Unloaded += (_, _) =>
+        {
+            _updates.PropertyChanged -= Updates_PropertyChanged;
+            _viewModel.PropertyChanged -= MainViewModel_PropertyChanged;
+        };
         SizeChanged += (_, _) => UpdateResponsiveWidth();
     }
 
@@ -52,6 +57,9 @@ public sealed partial class SettingsPage : Page
             _viewModel.StartupAvailable ? null : "当前环境无法创建 Windows 登录启动项。");
         RetentionNumberBox.Value = settings.RetentionDays;
         AutoUpdateToggle.IsOn = settings.AutomaticallyCheckUpdates;
+        AlwaysOnTopToggle.IsOn = settings.AlwaysOnTopEnabled;
+        RestoreTopmostToggle.IsOn = settings.RestoreTopmostOnExit;
+        RefreshTopmostStatus();
         RefreshUpdates();
         _updating = false;
     }
@@ -63,6 +71,34 @@ public sealed partial class SettingsPage : Page
     }
 
     private void Updates_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RefreshUpdates();
+
+    private void MainViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.AlwaysOnTopStatus) or nameof(MainViewModel.AlwaysOnTopHasError))
+        {
+            RefreshTopmostStatus();
+        }
+    }
+
+    private void RefreshTopmostStatus()
+    {
+        TopmostInfoBar.Message = _viewModel.AlwaysOnTopStatus;
+        TopmostInfoBar.Severity = _viewModel.AlwaysOnTopHasError ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+    }
+
+    private async void AlwaysOnTopToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_updating) return;
+        var enabled = AlwaysOnTopToggle.IsOn;
+        if (!await _viewModel.SaveSettingAsync(settings => settings with { AlwaysOnTopEnabled = enabled })) RefreshControls();
+    }
+
+    private async void RestoreTopmostToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_updating) return;
+        var restore = RestoreTopmostToggle.IsOn;
+        if (!await _viewModel.SaveSettingAsync(settings => settings with { RestoreTopmostOnExit = restore })) RefreshControls();
+    }
 
     private void RefreshUpdates()
     {

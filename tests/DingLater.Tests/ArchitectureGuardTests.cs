@@ -4,7 +4,7 @@ namespace DingLater.Tests;
 public sealed class ArchitectureGuardTests
 {
     [TestMethod]
-    public void RuntimeSource_DoesNotContainInteractionApis_AndOnlyUpdaterMayUseHttp()
+    public void RuntimeSource_RestrictsInteractionToTopmostUtility_AndHttpToUpdater()
     {
         var root = FindRepositoryRoot();
         var sourceFiles = Directory.GetFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories);
@@ -46,6 +46,11 @@ public sealed class ArchitectureGuardTests
             foreach (var symbol in banned)
             {
                 if (symbol == "HttpClient" && string.Equals(file, Path.Combine(root, "src", "DingLater.Core", "Updates", "GitHubUpdateClient.cs"), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (symbol == "SetWindowPos" && Path.GetDirectoryName(file) == Path.Combine(root, "src", "DingLater.App", "Services", "AlwaysOnTop"))
                 {
                     continue;
                 }

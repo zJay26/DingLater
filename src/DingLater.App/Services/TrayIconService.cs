@@ -38,6 +38,7 @@ internal sealed class TrayIconService : IDisposable
     private bool _includePreview;
     private bool _paused;
     private bool _iconVisible;
+    private bool _utilityNotificationVisible;
 
     internal TrayIconService()
     {
@@ -182,6 +183,7 @@ internal sealed class TrayIconService : IDisposable
     internal event EventHandler? PauseToggleRequested;
     internal event EventHandler? ExitRequested;
     internal event EventHandler<Guid>? MessageOpenRequested;
+    internal event EventHandler? UtilitySettingsRequested;
 
     internal void SetPaused(bool paused)
     {
@@ -200,6 +202,7 @@ internal sealed class TrayIconService : IDisposable
 
     internal void ShowReminder(StoredMessage message, bool includePreview)
     {
+        _utilityNotificationVisible = false;
         _pendingMessageId = message.Id;
         var title = includePreview
             ? Trim($"DingLater · {ConversationPresentation.GetTitle([message])}", 63)
@@ -208,6 +211,12 @@ internal sealed class TrayIconService : IDisposable
             ? Trim($"{message.Captured.Sender}\n{message.Captured.VisibleBody}", 255)
             : "一条稍后消息到时了。";
         _icon.ShowNotification(title, text, NotificationIcon.None);
+    }
+
+    internal void ShowUtilityError(string message)
+    {
+        _utilityNotificationVisible = true;
+        _icon.ShowNotification("DingLater · 窗口置顶", Trim(message, 255), NotificationIcon.None, sound: false);
     }
 
     public void Dispose()
@@ -325,6 +334,13 @@ internal sealed class TrayIconService : IDisposable
     {
         if (args.MouseEvent == MouseEvent.BalloonToolTipClicked)
         {
+            if (_utilityNotificationVisible)
+            {
+                _utilityNotificationVisible = false;
+                UtilitySettingsRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             OpenPendingOrWindow();
         }
     }

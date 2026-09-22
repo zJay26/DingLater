@@ -34,6 +34,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private ConversationThreadViewModel? _selectedConversation;
     private MessageCardViewModel? _selectedMessage;
     private bool _isSettingsPage;
+    private string _alwaysOnTopStatus = "正在准备窗口置顶…";
+    private bool _alwaysOnTopHasError;
 
     public MainViewModel(InboxService inbox, StartupService startup, Action<Action>? dispatch = null)
     {
@@ -60,6 +62,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event EventHandler<UiFontScale>? FontScaleChanged;
 
     public AppSettings Settings => _inbox.Settings;
+
+    public string AlwaysOnTopStatus => _alwaysOnTopStatus;
+    public bool AlwaysOnTopHasError => _alwaysOnTopHasError;
+
+    internal void SetAlwaysOnTopStatus(string message, bool isError) => _dispatch(() =>
+    {
+        SetProperty(ref _alwaysOnTopStatus, message, nameof(AlwaysOnTopStatus));
+        SetProperty(ref _alwaysOnTopHasError, isError, nameof(AlwaysOnTopHasError));
+    });
 
     public InboxSection Section
     {
