@@ -1,34 +1,53 @@
 <div align="center">
 
-# DingLater
+<img src="src/DingLater.App/Assets/DingLaterMark.svg" width="112" height="112" alt="DingLater 图标：紫色圆角方块中的白色时钟">
 
-**钉钉“稍后回复箱”，给回复留一点空间。**
+<h1 align="center">DingLater<sub><sub><p align="right"><sup>by zJay</sup></p></sub></sub></h1>
 
-[Windows x64 下载](https://github.com/zJay26/DingLater/releases/latest) · [隐私与安全](docs/PRIVACY.md) · [兼容性与验收](docs/COMPATIBILITY.md)
+**钉钉消息的「稍后回复箱」**
 
+把需要回复的消息先收好，在合适的时候再处理。
+
+[下载 Windows x64](https://github.com/zJay26/DingLater/releases/latest) · [查看界面](#界面预览) · [快速开始](#下载与运行) · [隐私与安全](docs/PRIVACY.md)
+
+[![Windows CI](https://github.com/zJay26/DingLater/actions/workflows/windows.yml/badge.svg)](https://github.com/zJay26/DingLater/actions/workflows/windows.yml)
 [![Release](https://img.shields.io/github/v/release/zJay26/DingLater?display_name=tag)](https://github.com/zJay26/DingLater/releases/latest)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows11&logoColor=white)](https://github.com/zJay26/DingLater/releases/latest)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 
 </div>
 
-DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解析当前用户的钉钉 V3 本地数据库，不会打开钉钉会话或发送消息。
+DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解析当前用户的钉钉 V3 本地数据库，自动收好新消息，让你集中查看、设置稍后提醒并标记处理完成。它不会打开钉钉会话或发送消息。
 
 > DingLater 的代码路径不会写入钉钉文件，也没有发送已读回执的网络或界面操作。发送方是否始终保持“未读”仍需用两个账号做最终验收，项目不会把静态保证描述成端到端保证。
 
 ## 界面预览
 
-**待处理消息**
-
 ![DingLater 待处理消息界面](docs/assets/dinglater-inbox.png)
 
-**稍后提醒**
+<details>
+<summary>查看稍后提醒与设置界面</summary>
+
+### 稍后提醒
 
 ![DingLater 稍后提醒界面](docs/assets/dinglater-snoozed.png)
 
-**设置**
+### 设置
 
 ![DingLater 设置界面](docs/assets/dinglater-settings.png)
+
+</details>
+
+## 从收到消息到处理完成
+
+|  | 你可以做什么 |
+|---|---|
+| **待处理** | 集中查看新消息，搜索会话，保留需要回复的内容。 |
+| **稍后提醒** | 按分钟设置提醒时间，到期后回到待处理列表。 |
+| **已处理** | 回复后自行标记完成，清楚区分尚未处理的消息。 |
+| **本地保存** | 消息留在当前 Windows 用户的本地加密存储中；没有钉钉网络连接、云同步或遥测。 |
+
+> 当前适配 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式；首次启用只记录之后的新消息，不导入历史。版本与验收范围见[兼容性与验收](docs/COMPATIBILITY.md)。
 
 ## 下载与运行
 
