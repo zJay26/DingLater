@@ -48,14 +48,15 @@ try {
     }
     $env:DOTNET_CLI_HOME = Join-Path $repoRoot '.tools\cli-home'
     $env:NUGET_PACKAGES = Join-Path $repoRoot '.tools\nuget-packages'
+    $env:MSBUILDDISABLENODEREUSE = '1'
     New-Item -ItemType Directory -Path $publishRoot -Force | Out-Null
 
-    & $dotnet restore (Join-Path $repoRoot 'DingLater.slnx') --locked-mode --nologo
+    & $dotnet restore (Join-Path $repoRoot 'DingLater.slnx') --locked-mode --disable-parallel -m:1 --nologo
     if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed.' }
-    & $dotnet test (Join-Path $repoRoot 'DingLater.slnx') -c $Configuration --no-restore --nologo
+    & $dotnet test (Join-Path $repoRoot 'DingLater.slnx') -c $Configuration --no-restore --disable-build-servers -m:1 --nologo
     if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed.' }
     & $dotnet publish (Join-Path $repoRoot 'src\DingLater.App\DingLater.App.csproj') `
-        -c $Configuration -r win-x64 --self-contained true --no-restore -o $publishRoot `
+        -c $Configuration -r win-x64 --self-contained true --no-restore --disable-build-servers -m:1 -o $publishRoot `
         -p:Version=$Version -p:PublishSingleFile=false -p:DebugSymbols=false -p:DebugType=None
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 

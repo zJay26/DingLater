@@ -74,7 +74,9 @@ public sealed partial class TrayHoverWindow : Window
             || MarkAllButton.IsEnabled != (pendingCount > 0) || MarkAllButton.ActualWidth <= 0
             || (contactCount > 0 && ContactsList.ActualHeight <= 0))
         {
-            throw new InvalidOperationException("托盘浮层的渲染或待处理状态不符合预期。");
+            throw new InvalidOperationException($"托盘浮层验收失败：expected={pendingCount}/{contactCount}, "
+                + $"visible={IsVisible}, active={IsActive}, surface={Surface.ActualWidth}x{Surface.ActualHeight}, "
+                + $"rows={ContactsList.Items.Count}, pending={_pendingCount}, button={MarkAllButton.IsEnabled}/{MarkAllButton.ActualWidth}, list={ContactsList.ActualHeight}。");
         }
     }
 

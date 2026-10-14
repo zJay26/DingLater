@@ -46,7 +46,17 @@ try {
         if ($window -ne [IntPtr]::Zero) { break }
         Start-Sleep -Milliseconds 30
     }
-    if ($window -eq [IntPtr]::Zero) { throw 'The isolated tray flyout was not displayed.' }
+    if ($window -eq [IntPtr]::Zero) {
+        foreach ($diagnosticName in @('package-smoke.error', 'tray-hover-smoke.error')) {
+            $diagnosticPath = Join-Path $executableDirectory $diagnosticName
+            if ((Test-Path -LiteralPath $diagnosticPath) -and (Get-Item -LiteralPath $diagnosticPath).LastWriteTimeUtc -ge $started) {
+                Copy-Item -LiteralPath $diagnosticPath -Destination (Join-Path $output $diagnosticName) -Force
+                Get-Content -LiteralPath $diagnosticPath
+            }
+        }
+        $exitStatus = if ($process.HasExited) { [string]$process.ExitCode } else { 'still running' }
+        throw "The isolated tray flyout was not displayed (process: $exitStatus)."
+    }
     if (-not $process.WaitForExit(20000)) { throw 'The isolated tray smoke test did not finish.' }
     $errorPath = Join-Path $executableDirectory 'tray-hover-smoke.error'
     if ($process.ExitCode -ne 0) {
