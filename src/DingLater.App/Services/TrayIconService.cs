@@ -1,4 +1,5 @@
 using DingLater.App.ViewModels;
+using DingLater.App.Views;
 using DingLater.Core.Models;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
@@ -24,10 +25,12 @@ internal sealed class TrayIconService : IDisposable
     private readonly TaskbarIcon _icon;
     private readonly MenuFlyoutItem _pauseItem;
     private readonly DispatcherQueueTimer _attentionTimer;
-    private readonly TextBlock _toolTipTitle;
-    private readonly TextBlock _toolTipCount;
-    private readonly TextBlock _toolTipBody;
-    private readonly TextBlock _toolTipFooter;
+    private readonly DispatcherQueueTimer _hoverTimer;
+    private TrayHoverWindow? _hoverWindow;
+    private TrayInboxPresentation _inboxPresentation = TrayInboxPresentationBuilder.Build([], true);
+    private System.Drawing.Rectangle _hoverAnchor;
+    private long? _hoverStartedAt;
+    private long? _outsideSince;
     private readonly bool _animationsEnabled;
     private DrawingIcon? _pendingIcon;
     private DrawingIcon? _transparentIcon;
@@ -61,107 +64,22 @@ internal sealed class TrayIconService : IDisposable
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(exitItem);
 
-        _toolTipTitle = new TextBlock
-        {
-            Text = "DingLater",
-            VerticalAlignment = VerticalAlignment.Center,
-            FontFamily = new FontFamily("Segoe UI Variable Display"),
-            FontSize = 16,
-            FontWeight = FontWeights.SemiBold
-        };
-        _toolTipCount = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            FontFamily = new FontFamily("Segoe UI Variable Text"),
-            FontSize = 13,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = ResourceBrush("DingAccentBrush")
-        };
-        _toolTipBody = new TextBlock
-        {
-            MaxWidth = 310,
-            MaxLines = 3,
-            FontFamily = new FontFamily("Segoe UI Variable Text"),
-            FontSize = 14,
-            LineHeight = 20,
-            TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        _toolTipFooter = new TextBlock
-        {
-            FontSize = 12,
-            Opacity = 0.68,
-            FontFamily = new FontFamily("Segoe UI Variable Text"),
-            TextWrapping = TextWrapping.Wrap
-        };
-        var iconTile = new Border
-        {
-            Width = 28,
-            Height = 28,
-            Background = ResourceBrush("DingAccentSoftBrush"),
-            CornerRadius = new CornerRadius(7),
-            Child = new FontIcon
-            {
-                Glyph = "\uE823",
-                FontSize = 15,
-                Foreground = ResourceBrush("DingAccentBrush")
-            }
-        };
-        var header = new Grid { ColumnSpacing = 9 };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(iconTile);
-        Grid.SetColumn(_toolTipTitle, 1);
-        header.Children.Add(_toolTipTitle);
-        var countChip = new Border
-        {
-            Padding = new Thickness(8, 3, 8, 3),
-            Background = ResourceBrush("DingAccentSoftBrush"),
-            CornerRadius = new CornerRadius(6),
-            Child = _toolTipCount
-        };
-        Grid.SetColumn(countChip, 2);
-        header.Children.Add(countChip);
-        var messagePanel = new Border
-        {
-            Padding = new Thickness(10, 8, 10, 8),
-            Background = ResourceBrush("DingAccentSoftBrush"),
-            CornerRadius = new CornerRadius(7),
-            Child = _toolTipBody
-        };
-        var contentStack = new StackPanel
-        {
-            Spacing = 9,
-            Children =
-            {
-                header,
-                messagePanel,
-                _toolTipFooter
-            }
-        };
-        var toolTipContent = new Border
-        {
-            Width = 334,
-            Padding = new Thickness(12),
-            Background = ResourceBrush("DingSurfaceRaisedBrush"),
-            BorderBrush = ResourceBrush("DingDividerBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Child = contentStack
-        };
-
         _icon = new TaskbarIcon
         {
             IconSource = new BitmapImage(NormalIconUri),
             ToolTipText = "DingLater · 捕获中 · 暂无待处理消息",
-            TrayToolTip = toolTipContent,
             ContextMenuMode = ContextMenuMode.PopupMenu,
             ContextFlyout = menu,
             LeftClickCommand = openCommand
         };
+        _icon.TrayIcon.UseStandardTooltip = false;
         _icon.ForceCreate(enablesEfficiencyMode: false);
         _icon.TrayIcon.MessageWindow.MouseEventReceived += MessageWindow_MouseEventReceived;
+
+        _hoverTimer = dispatcher.CreateTimer();
+        _hoverTimer.Interval = TimeSpan.FromMilliseconds(100);
+        _hoverTimer.IsRepeating = true;
+        _hoverTimer.Tick += HoverTimer_Tick;
 
         _attentionTimer = dispatcher.CreateTimer();
         _attentionTimer.Interval = TimeSpan.FromMilliseconds(600);
@@ -184,6 +102,8 @@ internal sealed class TrayIconService : IDisposable
     internal event EventHandler? ExitRequested;
     internal event EventHandler<Guid>? MessageOpenRequested;
     internal event EventHandler? UtilitySettingsRequested;
+    internal event EventHandler? InboxOpenRequested;
+    internal Func<Task>? MarkAllHandledAsync { get; set; }
 
     internal void SetPaused(bool paused)
     {
@@ -192,10 +112,11 @@ internal sealed class TrayIconService : IDisposable
         ApplyPresentation();
     }
 
-    internal void SetPendingMessages(int count, StoredMessage? latestMessage, bool includePreview)
+    internal void SetPendingMessages(IReadOnlyList<StoredMessage> messages, bool includePreview)
     {
-        _pendingCount = Math.Max(0, count);
-        _latestPendingMessage = latestMessage;
+        _inboxPresentation = TrayInboxPresentationBuilder.Build(messages, includePreview);
+        _pendingCount = _inboxPresentation.PendingCount;
+        _latestPendingMessage = _inboxPresentation.LatestMessage;
         _includePreview = includePreview;
         ApplyPresentation();
     }
@@ -223,6 +144,9 @@ internal sealed class TrayIconService : IDisposable
     {
         _attentionTimer.Stop();
         _attentionTimer.Tick -= AttentionTimer_Tick;
+        _hoverTimer.Stop();
+        _hoverTimer.Tick -= HoverTimer_Tick;
+        _hoverWindow?.Close();
         _icon.TrayIcon.MessageWindow.MouseEventReceived -= MessageWindow_MouseEventReceived;
         _icon.Icon = null;
         _pendingIcon?.Dispose();
@@ -238,9 +162,10 @@ internal sealed class TrayIconService : IDisposable
             _includePreview,
             _paused);
         _icon.ToolTipText = presentation.ToolTipText;
-        _toolTipCount.Text = presentation.Title;
-        _toolTipBody.Text = presentation.Body;
-        _toolTipFooter.Text = presentation.Footer;
+        // Keep the accessible shell summary without a second, noninteractive tooltip.
+        _icon.TrayIcon.UseStandardTooltip = false;
+        _icon.TrayIcon.UpdateToolTip(presentation.ToolTipText);
+        _hoverWindow?.Update(_inboxPresentation, _paused);
 
         if (_pendingCount == 0)
         {
@@ -317,6 +242,13 @@ internal sealed class TrayIconService : IDisposable
             return;
         }
 
+        if (_hoverWindow is { IsVisible: true })
+        {
+            _iconVisible = true;
+            _icon.Icon = _pendingIcon;
+            return;
+        }
+
         _iconVisible = !_iconVisible;
         _icon.Icon = _iconVisible ? _pendingIcon : _transparentIcon;
     }
@@ -332,6 +264,19 @@ internal sealed class TrayIconService : IDisposable
         object? sender,
         H.NotifyIcon.Core.MessageWindow.MouseEventReceivedEventArgs args)
     {
+        if (args.MouseEvent == MouseEvent.MouseMove)
+        {
+            _hoverAnchor = TrayHoverNative.GetIconBounds(_icon.TrayIcon.WindowHandle, _icon.TrayIcon.Id, args.Point);
+            _hoverStartedAt ??= Environment.TickCount64;
+            if (!_hoverTimer.IsRunning) _hoverTimer.Start();
+            return;
+        }
+
+        if (args.MouseEvent is MouseEvent.IconLeftMouseDown or MouseEvent.IconRightMouseDown)
+        {
+            DismissHover();
+        }
+
         if (args.MouseEvent == MouseEvent.BalloonToolTipClicked)
         {
             if (_utilityNotificationVisible)
@@ -343,6 +288,66 @@ internal sealed class TrayIconService : IDisposable
 
             OpenPendingOrWindow();
         }
+    }
+
+    private void HoverTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (!TrayHoverNative.TryGetPointer(out var pointer))
+        {
+            DismissHover();
+            return;
+        }
+        var overIcon = System.Drawing.Rectangle.Inflate(_hoverAnchor, 4, 4).Contains(pointer);
+        var overList = _hoverWindow is { IsVisible: true } window && window.FlyoutBounds.Contains(pointer);
+        var now = Environment.TickCount64;
+        if (overIcon || overList)
+        {
+            _outsideSince = null;
+            if (overIcon && _hoverWindow is not { IsVisible: true } && now - (_hoverStartedAt ?? now) >= 350)
+            {
+                GetHoverWindow().ShowAt(_hoverAnchor);
+            }
+            return;
+        }
+        if (_hoverWindow is not { IsVisible: true })
+        {
+            DismissHover();
+            return;
+        }
+        if (TrayHoverNative.IsMouseButtonDown)
+        {
+            DismissHover();
+            return;
+        }
+        if (_hoverWindow.IsActive) return;
+        _outsideSince ??= now;
+        if (now - _outsideSince.Value >= 450) DismissHover();
+    }
+
+    private TrayHoverWindow GetHoverWindow()
+    {
+        if (_hoverWindow is not null) return _hoverWindow;
+        _hoverWindow = new TrayHoverWindow();
+        _hoverWindow.MessageOpenRequested += (_, id) => MessageOpenRequested?.Invoke(this, id);
+        _hoverWindow.InboxOpenRequested += (_, _) => InboxOpenRequested?.Invoke(this, EventArgs.Empty);
+        _hoverWindow.MarkAllHandledAsync = () => MarkAllHandledAsync?.Invoke() ?? Task.CompletedTask;
+        _hoverWindow.Update(_inboxPresentation, _paused);
+        return _hoverWindow;
+    }
+
+    internal TrayHoverWindow ShowHoverForSmokeTest(System.Drawing.Rectangle anchor)
+    {
+        var window = GetHoverWindow();
+        window.ShowAt(anchor);
+        return window;
+    }
+
+    private void DismissHover()
+    {
+        _hoverTimer.Stop();
+        _hoverStartedAt = null;
+        _outsideSince = null;
+        _hoverWindow?.HideFlyout();
     }
 
     private void OpenPendingOrWindow()
@@ -360,6 +365,4 @@ internal sealed class TrayIconService : IDisposable
     private static string Trim(string value, int maximum) =>
         value.Length <= maximum ? value : value[..(maximum - 1)] + "…";
 
-    private static Brush ResourceBrush(string key) =>
-        (Brush)Application.Current.Resources[key];
 }

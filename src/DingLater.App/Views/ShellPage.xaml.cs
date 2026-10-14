@@ -37,6 +37,15 @@ public sealed partial class ShellPage : Page
         _inboxPage.ShowSelectedMessage();
     }
 
+    internal void OpenInbox()
+    {
+        _viewModel.IsSettingsPage = false;
+        _viewModel.SearchText = string.Empty;
+        _viewModel.Section = InboxSection.Inbox;
+        Navigation.SelectedItem = ItemForSection(InboxSection.Inbox);
+        PageHost.Content = _inboxPage;
+    }
+
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
         RefreshUpdateNotice();

@@ -113,6 +113,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsEmpty => Conversations.Count == 0;
     public int InboxCount { get; private set; }
     public StoredMessage? LatestInboxMessage { get; private set; }
+    internal IReadOnlyList<StoredMessage> PendingInboxMessages { get; private set; } = [];
     public int SnoozedCount { get; private set; }
     public int HandledCount { get; private set; }
     public bool CapturePaused => Settings.CapturePaused;
@@ -555,13 +556,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             .Concat(_allMessages.SelectMany(message => new[] { message.Captured.Conversation, message.Captured.Sender }))
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
-        InboxCount = _allMessages.Count(message => message.State == InboxState.Inbox);
+        PendingInboxMessages = _allMessages.Where(message => message.State == InboxState.Inbox).ToArray();
+        InboxCount = PendingInboxMessages.Count;
         SnoozedCount = _allMessages.Count(message => message.State == InboxState.Snoozed);
         HandledCount = _allMessages.Count(message => message.State == InboxState.Handled);
-        LatestInboxMessage = _allMessages.Where(message => message.State == InboxState.Inbox)
+        LatestInboxMessage = PendingInboxMessages
             .MaxBy(ConversationPresentation.GetMessageTime);
         OnPropertyChanged(nameof(InboxCount));
         OnPropertyChanged(nameof(LatestInboxMessage));
+        OnPropertyChanged(nameof(PendingInboxMessages));
         OnPropertyChanged(nameof(SnoozedCount));
         OnPropertyChanged(nameof(HandledCount));
     }

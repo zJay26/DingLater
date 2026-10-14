@@ -219,6 +219,33 @@ public sealed class MainViewModelTests
         Assert.AreEqual(0, viewModel.HandledCount);
     }
 
+    [TestMethod]
+    public async Task TrayPendingAndBulkAction_IgnoreSearchAndSelectedSection()
+    {
+        var now = DateTimeOffset.Now;
+        var store = new MutableStore();
+        store.Messages.Add(Stored("甲", "甲", "只匹配甲", ConversationScope.Direct, now));
+        store.Messages.Add(Stored("乙", "乙", "乙的内容", ConversationScope.Direct, now));
+        store.Messages.Add(Stored("丙", "丙", "稍后", ConversationScope.Direct, now) with
+        {
+            State = InboxState.Snoozed,
+            SnoozedUntil = now.AddHours(1)
+        });
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        await inbox.InitializeAsync();
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.RefreshAsync();
+        viewModel.SearchText = "只匹配甲";
+        Assert.AreEqual(1, viewModel.Conversations.Count);
+        viewModel.Section = InboxSection.Handled;
+
+        Assert.AreEqual(2, viewModel.PendingInboxMessages.Count);
+        Assert.AreEqual(2, await viewModel.MarkAllHandledAsync(InboxSection.Inbox));
+        Assert.AreEqual(0, viewModel.PendingInboxMessages.Count);
+        Assert.AreEqual(2, viewModel.HandledCount);
+        Assert.AreEqual(1, viewModel.SnoozedCount);
+    }
+
     private static StoredMessage Stored(
         string conversation,
         string sender,

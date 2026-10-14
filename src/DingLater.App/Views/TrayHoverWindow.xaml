@@ -1,0 +1,117 @@
+<Window
+    x:Class="DingLater.App.Views.TrayHoverWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:DingLater.App.ViewModels">
+    <Border x:Name="Surface" Width="392" CornerRadius="12"
+        Background="{ThemeResource DingSurfaceRaisedBrush}"
+        BorderBrush="{ThemeResource DingDividerBrush}" BorderThickness="1">
+        <Grid x:Name="RootGrid" KeyDown="RootGrid_KeyDown">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Margin="18,18,18,16" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Image Width="36" Height="36" VerticalAlignment="Center">
+                    <Image.Source><SvgImageSource UriSource="ms-appx:///Assets/DingLaterMark.svg" /></Image.Source>
+                </Image>
+                <TextBlock Grid.Column="1" Text="DingLater" FontSize="18" FontWeight="SemiBold"
+                    VerticalAlignment="Center" Foreground="{ThemeResource DingTextBrush}" />
+                <StackPanel Grid.Column="2" Spacing="3" VerticalAlignment="Center">
+                    <TextBlock x:Name="PendingSummary" FontSize="14" FontWeight="SemiBold"
+                        HorizontalAlignment="Right" Foreground="{ThemeResource DingTextBrush}" />
+                    <TextBlock x:Name="ContactSummary" FontSize="12" HorizontalAlignment="Right"
+                        Foreground="{ThemeResource DingSecondaryTextBrush}" />
+                </StackPanel>
+            </Grid>
+            <Grid Grid.Row="1">
+                <ListView x:Name="ContactsList" Margin="10,0,10,0" MaxHeight="360"
+                    SelectionMode="None" IsItemClickEnabled="True" ItemClick="ContactsList_ItemClick"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    AutomationProperties.AutomationId="TrayPendingContacts">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="8,0" />
+                            <Setter Property="MinHeight" Value="72" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TrayContactViewModel">
+                            <Border Padding="0,13" BorderThickness="0,0,0,1"
+                                BorderBrush="{ThemeResource DingDividerBrush}"
+                                AutomationProperties.Name="{x:Bind AccessibleText}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="40" Height="40" CornerRadius="8" VerticalAlignment="Center"
+                                        Background="{ThemeResource DingAccentSoftBrush}">
+                                        <TextBlock Text="{x:Bind AvatarText}" FontSize="19" FontWeight="SemiBold"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Foreground="{ThemeResource DingAccentBrush}" />
+                                    </Border>
+                                    <Grid Grid.Column="1" RowSpacing="5">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind Name}" MaxWidth="136" FontSize="14" FontWeight="SemiBold"
+                                                    TextTrimming="CharacterEllipsis" Foreground="{ThemeResource DingTextBrush}" />
+                                                <Border Background="{ThemeResource DingAccentSoftBrush}" CornerRadius="9" Padding="6,1" MinWidth="22">
+                                                    <TextBlock Text="{x:Bind CountText}" FontSize="11" FontWeight="SemiBold"
+                                                        HorizontalAlignment="Center" Foreground="{ThemeResource DingAccentBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
+                                                Foreground="{ThemeResource DingSecondaryTextBrush}" />
+                                        </Grid>
+                                        <TextBlock Grid.Row="1" Text="{x:Bind Preview}" FontSize="13" MaxLines="1"
+                                            TextTrimming="CharacterEllipsis" Foreground="{ThemeResource DingSecondaryTextBrush}">
+                                            <ToolTipService.ToolTip><ToolTip Content="{x:Bind Preview}" MaxWidth="360" /></ToolTipService.ToolTip>
+                                        </TextBlock>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <StackPanel x:Name="EmptyState" Margin="24,22,24,28" Spacing="8" HorizontalAlignment="Center">
+                    <FontIcon Glyph="&#xE73E;" FontSize="26" Foreground="{ThemeResource DingAccentBrush}" />
+                    <TextBlock x:Name="EmptyTitle" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"
+                        Foreground="{ThemeResource DingTextBrush}" />
+                    <TextBlock x:Name="EmptyBody" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                        Foreground="{ThemeResource DingSecondaryTextBrush}" />
+                </StackPanel>
+            </Grid>
+            <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DingDividerBrush}" Padding="18,14">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <HyperlinkButton Content="查看全部" Padding="0" FontSize="13" HorizontalAlignment="Left"
+                        Foreground="{ThemeResource DingAccentBrush}"
+                        VerticalAlignment="Center" Click="OpenInbox_Click" AutomationProperties.AutomationId="TrayOpenInbox" />
+                    <Button x:Name="MarkAllButton" Grid.Column="1" MinHeight="32" Padding="12,6"
+                        Background="{ThemeResource DingAccentBrush}" Foreground="{ThemeResource DingAccentForegroundBrush}"
+                        Style="{StaticResource AccentButtonStyle}" Click="MarkAllButton_Click"
+                        AutomationProperties.AutomationId="TrayMarkAllHandled" AutomationProperties.Name="将全部待处理消息标为已处理">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE73E;" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock x:Name="MarkAllLabel" Text="全部已处理" FontSize="13" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

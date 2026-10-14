@@ -3,7 +3,7 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
     [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
-    [string]$Version = '2.5.0',
+    [string]$Version = '2.6.0',
     [string]$DotnetPath = ''
 )
 
@@ -59,7 +59,7 @@ try {
         -p:Version=$Version -p:PublishSingleFile=false -p:DebugSymbols=false -p:DebugType=None
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 
-    foreach ($relativePath in @('DingLater.pri', 'App.xbf', 'Views\MainWindow.xbf', 'Views\ShellPage.xbf', 'Views\InboxPage.xbf', 'Views\SettingsPage.xbf', 'Views\OnboardingPage.xbf', 'Styles\Typography.Small.xbf', 'Styles\Typography.Standard.xbf', 'Styles\Typography.Large.xbf', 'Styles\Typography.ExtraLarge.xbf')) {
+    foreach ($relativePath in @('DingLater.pri', 'App.xbf', 'Views\MainWindow.xbf', 'Views\ShellPage.xbf', 'Views\InboxPage.xbf', 'Views\TrayHoverWindow.xbf', 'Views\SettingsPage.xbf', 'Views\OnboardingPage.xbf', 'Styles\Typography.Small.xbf', 'Styles\Typography.Standard.xbf', 'Styles\Typography.Large.xbf', 'Styles\Typography.ExtraLarge.xbf')) {
         if (-not (Test-Path -LiteralPath (Join-Path $publishRoot $relativePath) -PathType Leaf)) { throw "Published WinUI resource is missing: $relativePath" }
     }
     Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $publishRoot
@@ -77,8 +77,14 @@ try {
     }
     $assetRoot = Join-Path $docsRoot 'assets'
     New-Item -ItemType Directory -Path $assetRoot -Force | Out-Null
-    foreach ($file in @('dinglater-inbox.png', 'dinglater-snoozed.png', 'dinglater-settings.png')) {
+    foreach ($file in @('dinglater-inbox.png', 'dinglater-snoozed.png', 'dinglater-settings.png', 'dinglater-tray-hover.png')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot "docs\assets\$file") -Destination $assetRoot
+    }
+
+    & (Join-Path $PSScriptRoot 'Test-TrayHover.ps1') -ExecutablePath (Join-Path $publishRoot 'DingLater.exe') -OutputDirectory (Join-Path $artifactRoot 'tray-validation')
+    foreach ($testFile in @('tray-hover-B-actual.png', 'tray-hover-smoke.json', 'tray-hover-smoke.error', 'package-smoke.error')) {
+        $testPath = Join-Path $publishRoot $testFile
+        if (Test-Path -LiteralPath $testPath) { Remove-Item -LiteralPath $testPath }
     }
 
     $files = @(Get-ChildItem -LiteralPath $publishRoot -Recurse -File | Sort-Object FullName | ForEach-Object {

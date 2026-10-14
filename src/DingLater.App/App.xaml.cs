@@ -193,6 +193,8 @@ public partial class App : Application
             };
             _tray.ExitRequested += Tray_ExitRequested;
             _tray.MessageOpenRequested += (_, id) => _mainWindow.Dispatch(() => OpenMessage(id));
+            _tray.InboxOpenRequested += (_, _) => _mainWindow.Dispatch(OpenInbox);
+            _tray.MarkAllHandledAsync = () => _viewModel.MarkAllHandledAsync(InboxSection.Inbox);
             _tray.SetPaused(_inbox.Settings.CapturePaused);
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
             InitializeAlwaysOnTop();
@@ -284,8 +286,7 @@ public partial class App : Application
             ApplyAlwaysOnTopSettings();
         }
 
-        if (args.PropertyName is nameof(MainViewModel.InboxCount)
-            or nameof(MainViewModel.LatestInboxMessage)
+        if (args.PropertyName is nameof(MainViewModel.PendingInboxMessages)
             or nameof(MainViewModel.Settings))
         {
             _mainWindow?.Dispatch(UpdateTrayStatus);
@@ -300,8 +301,7 @@ public partial class App : Application
         }
 
         _tray.SetPendingMessages(
-            _viewModel.InboxCount,
-            _viewModel.LatestInboxMessage,
+            _viewModel.PendingInboxMessages,
             _viewModel.Settings.ShowReminderPreview);
     }
 
@@ -398,6 +398,12 @@ public partial class App : Application
         _shellPage?.OpenMessage(id);
     }
 
+    private void OpenInbox()
+    {
+        _mainWindow?.ShowFromBackground();
+        _shellPage?.OpenInbox();
+    }
+
     private async Task ExitApplicationAsync()
     {
         if (_exiting)
@@ -469,6 +475,7 @@ public partial class App : Application
         }
 
         // Exercise the shipping shell and its templates using only isolated synthetic data.
+        var traySmoke = Environment.GetCommandLineArgs().Contains("--tray-hover-smoke-test", StringComparer.OrdinalIgnoreCase);
         _smokeDataRoot = Path.Combine(Path.GetTempPath(), "DingLater-PackageSmoke", Guid.NewGuid().ToString("N"));
         var key = RandomNumberGenerator.GetBytes(32);
         try
@@ -488,7 +495,7 @@ public partial class App : Application
         await _inbox.SaveSettingsAsync(_inbox.Settings with { AlwaysOnTopEnabled = IsTopmostSmokeTest() }, applyRetention: false);
         if (IsTopmostSmokeTest()) _mainWindow.Title = "DingLater · 窗口置顶测试（合成数据）";
         var now = DateTimeOffset.Now;
-        foreach (var state in new[] { InboxState.Inbox, InboxState.Snoozed, InboxState.Handled })
+        foreach (var state in new[] { InboxState.Inbox, InboxState.Snoozed, InboxState.Handled }.Where(state => !traySmoke || state != InboxState.Inbox))
         {
             var result = await store.AddAsync(new CapturedMessage(
                 CaptureSourceKind.Synthetic, now, "示例项目群", "示例联系人",
@@ -497,15 +504,49 @@ public partial class App : Application
             await store.UpdateStateAsync(result.Message.Id, state, state == InboxState.Snoozed ? now.AddMinutes(30) : null, now);
         }
 
+        if (traySmoke)
+        {
+            var people = new[]
+            {
+                (Name: "张晓", Count: 4, Body: "明天下午三点方便一起过一下方案吗？"),
+                (Name: "李明", Count: 3, Body: "更新后的报价单已发你，请确认。"),
+                (Name: "陈雨", Count: 2, Body: "这版界面我整理了几点建议，晚点聊。"),
+                (Name: "王磊", Count: 2, Body: "周五上线前还需要再跑一轮回归。"),
+                (Name: "赵宁", Count: 1, Body: "会议纪要已经同步到文档了。")
+            };
+            for (var person = 0; person < people.Length; person++)
+            {
+                for (var message = 0; message < people[person].Count; message++)
+                {
+                    await store.AddAsync(new CapturedMessage(CaptureSourceKind.Synthetic,
+                        now.AddMinutes(-person * 6 - message), people[person].Name, people[person].Name,
+                        message == 0 ? people[person].Body : "这位联系人的较早待处理消息。",
+                        MessageKind.Normal, 1, "tray-hover-smoke",
+                        SourceIdentity: $"tray:{person}:{message}", ConversationScope: ConversationScope.Direct), 7);
+                }
+            }
+        }
+
         _viewModel = new MainViewModel(_inbox, new StartupService(), action => _mainWindow.Dispatch(action));
         await _viewModel.RefreshAsync();
         CreateUpdateViewModel();
         RebuildShell();
         _tray = new TrayIconService();
+        _tray.MessageOpenRequested += (_, id) => _mainWindow.Dispatch(() => OpenMessage(id));
+        _tray.InboxOpenRequested += (_, _) => _mainWindow.Dispatch(OpenInbox);
+        _tray.MarkAllHandledAsync = () => _viewModel.MarkAllHandledAsync(InboxSection.Inbox);
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         InitializeAlwaysOnTop();
-        _tray.SetPendingMessages(_viewModel.InboxCount, latestMessage: null, includePreview: false);
+        _tray.SetPendingMessages(_viewModel.PendingInboxMessages, includePreview: traySmoke);
         _mainWindow.ShowFromBackground();
+        TrayHoverWindow? traySmokeWindow = null;
+        if (traySmoke)
+        {
+            _mainWindow.HideToTray();
+            var workArea = Microsoft.UI.Windowing.DisplayArea.Primary.WorkArea;
+            traySmokeWindow = _tray.ShowHoverForSmokeTest(new System.Drawing.Rectangle(workArea.X + workArea.Width - 160,
+                workArea.Y + workArea.Height + 2, 24, 24));
+        }
         _packageSmokeTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         var interactive = Environment.GetCommandLineArgs().Contains("--interactive-smoke-test", StringComparer.OrdinalIgnoreCase);
         var settingsVisited = false;
@@ -515,6 +556,46 @@ public partial class App : Application
         _packageSmokeTimer.Tick += async (_, _) =>
         {
             _packageSmokeTimer?.Stop();
+            if (traySmoke && !interactive && traySmokeWindow is not null)
+            {
+                try
+                {
+                    traySmokeWindow.VerifyRenderedState(12, 5);
+                    if (traySmokeWindow.IsForeground) throw new InvalidOperationException("悬停浮层抢占了窗口焦点。");
+                    await traySmokeWindow.SaveLayoutPreviewAsync(Path.Combine(AppContext.BaseDirectory, "tray-hover-B-actual.png"));
+                    var bounds = traySmokeWindow.FlyoutBounds;
+                    _viewModel.Section = InboxSection.Snoozed;
+                    _viewModel.SearchText = "不会命中的检索词";
+                    await traySmokeWindow.MarkAllAsync();
+                    await Task.Delay(150);
+                    traySmokeWindow.VerifyRenderedState(0, 0);
+                    if (_viewModel.InboxCount != 0 || _viewModel.SnoozedCount != 1 || _viewModel.HandledCount != 13)
+                    {
+                        throw new InvalidOperationException("全部已处理影响了错误的消息分类。");
+                    }
+                    await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, "tray-hover-smoke.json"),
+                        System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            Passed = true,
+                            BeforePending = 12,
+                            BeforeContacts = 5,
+                            AfterPending = 0,
+                            SnoozedPreserved = 1,
+                            Handled = 13,
+                            NonActivating = true,
+                            bounds.Width,
+                            bounds.Height
+                        }));
+                }
+                catch (Exception exception)
+                {
+                    Environment.ExitCode = 1;
+                    await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, "tray-hover-smoke.error"), exception.ToString());
+                }
+                await ExitApplicationAsync();
+                CleanupPackageSmokeData();
+                return;
+            }
             if (!interactive && !settingsVisited)
             {
                 settingsVisited = true;
@@ -524,13 +605,21 @@ public partial class App : Application
             }
 
             await ExitApplicationAsync();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (_smokeDataRoot is not null && Directory.Exists(_smokeDataRoot))
-            {
-                Directory.Delete(_smokeDataRoot, recursive: true);
-            }
+            CleanupPackageSmokeData();
         };
         _packageSmokeTimer.Start();
+    }
+
+    private void CleanupPackageSmokeData()
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        var smokePrefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "DingLater-PackageSmoke"))
+            + Path.DirectorySeparatorChar;
+        if (_smokeDataRoot is not null && Directory.Exists(_smokeDataRoot)
+            && Path.GetFullPath(_smokeDataRoot).StartsWith(smokePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.Delete(_smokeDataRoot, recursive: true);
+        }
     }
 
     private async void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
@@ -539,6 +628,7 @@ public partial class App : Application
         {
             e.Handled = true;
             Environment.ExitCode = 1;
+            await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, "package-smoke.error"), e.Exception.ToString());
             await ExitApplicationAsync();
             return;
         }
