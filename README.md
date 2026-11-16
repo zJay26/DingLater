@@ -63,20 +63,20 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 普通用户只需要下面几步：
 
 1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
-2. 下载名称类似 `DingLater-2.6.0-win-x64-portable.zip` 的 ZIP 文件。
+2. 下载名称类似 `DingLater-2.7.0-win-x64-portable.zip` 的 ZIP 文件。
 3. 把 ZIP **完整解压到一个新文件夹**，等待解压结束，然后双击里面的 `DingLater.exe`。不能直接在压缩包内运行。
 4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
 
 便携版不用安装，也不需要管理员权限。最好先用 `SHA256SUMS.txt` 校验下载文件，再运行程序。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名。
 
-v2.6.0 新增托盘悬停列表：按人查看待处理数量和最近一条待处理内容，可在右下角点击“全部已处理”。参见[本次更新说明](docs/releases/v2.6.0.md)。v2.4.0 及以上用户可通过“设置 → 软件更新”更新，更早版本需手动下载并完整解压。窗口置顶功能仍使用 `Ctrl + Win + T`。
+v2.7.0 全面改进界面：统一品牌配色、紧凑的捕获状态标签、带头像与标签的会话列表、Windows 11 风格设置页、读屏支持和常用快捷键。参见[本次更新说明](docs/releases/v2.7.0.md)。v2.4.0 及以上用户可通过“设置 → 软件更新”更新，更早版本需手动下载并完整解压。窗口置顶功能仍使用 `Ctrl + Win + T`。
 
 如果无法启动，在解压目录打开 PowerShell，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\Verify-Portable.ps1`。它会逐文件检查完整性，报告缺失或损坏的依赖；需要保留 ZIP 内全部文件，不能只复制 EXE。
 
 校验方法：把 ZIP 和 `SHA256SUMS.txt` 放在同一个文件夹，在该文件夹打开 PowerShell，运行下面的命令（文件名不同时请替换第一行）：
 
 ```powershell
-$zip = ".\DingLater-2.6.0-win-x64-portable.zip"
+$zip = ".\DingLater-2.7.0-win-x64-portable.zip"
 $expected = (Get-Content .\SHA256SUMS.txt).Trim().Split()[0].ToLower()
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校验失败，请重新下载" }
@@ -129,7 +129,7 @@ $env:DOTNET_CLI_HOME="$PWD\.tools\cli-home"
 $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 .\.tools\dotnet\dotnet.exe restore .\DingLater.slnx --locked-mode
 .\.tools\dotnet\dotnet.exe test .\DingLater.slnx -c Release
-.\scripts\Build-Portable.ps1 -Version 2.6.0
+.\scripts\Build-Portable.ps1 -Version 2.7.0
 ```
 
 最新本地测试版始终位于 `BuildOutput\DingLater.exe`，也可以直接双击仓库根目录的 `启动最新版本.cmd`。每次执行构建脚本都会覆盖这个固定目录，不再创建按日期变化的发布目录；ZIP 和 `SHA256SUMS.txt` 也放在同一目录。只有明确设置 `DINGLATER_DEMO=1` 或传入 `--demo` 的 Debug 运行才使用合成消息；普通 Debug/Release 都使用真实只读 V3 来源，Release 会忽略这两个测试入口。
