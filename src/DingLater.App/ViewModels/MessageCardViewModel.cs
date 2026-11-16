@@ -2,23 +2,33 @@ using DingLater.Core.Models;
 
 namespace DingLater.App.ViewModels;
 
-public sealed class MessageCardViewModel(StoredMessage model)
+public sealed class MessageCardViewModel(StoredMessage model, DateTimeOffset? now = null)
 {
     public StoredMessage Model { get; } = model;
     public Guid Id => Model.Id;
     public string Conversation => Model.Captured.Conversation;
     public string Sender => string.IsNullOrWhiteSpace(Model.Captured.Sender) ? "未知发送者" : Model.Captured.Sender;
-    public string Body => Model.Captured.VisibleBody;
+    public string Body => string.IsNullOrWhiteSpace(Model.Captured.VisibleBody)
+        ? PresentationText.NonTextPlaceholder
+        : Model.Captured.VisibleBody;
+
+    /// <summary>Exactly the captured text, so copying never yields the placeholder.</summary>
+    public string CopyText => Model.Captured.VisibleBody;
+    public bool CanCopy => !string.IsNullOrWhiteSpace(Model.Captured.VisibleBody);
     public InboxState State => Model.State;
     public DateTimeOffset ExpiresAt => Model.ExpiresAt;
     public DateTimeOffset? SnoozedUntil => Model.SnoozedUntil;
-    public string CapturedAtText => (Model.Captured.MessageAt ?? Model.Captured.CapturedAt).LocalDateTime.ToString("M月d日 HH:mm");
-    public string ExactCapturedAt => (Model.Captured.MessageAt ?? Model.Captured.CapturedAt).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+    public string CapturedAtText { get; } = DisplayTimeFormatter.Detailed(
+        ConversationPresentation.GetMessageTime(model),
+        now ?? DateTimeOffset.Now);
+    public string ExactCapturedAt => ConversationPresentation.GetMessageTime(Model).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
     public string ExpiryText => $"{Model.ExpiresAt.LocalDateTime:M月d日 HH:mm} 自动清理";
     public bool HasSnoozedReminder => Model.SnoozedUntil is not null;
     public string SnoozedUntilText => Model.SnoozedUntil is null
         ? string.Empty
         : $"提醒时间：{Model.SnoozedUntil.Value.LocalDateTime:yyyy年M月d日 HH:mm}";
+    public bool IsMention => Model.Captured.Kind == MessageKind.Mention;
+    public bool IsDing => Model.Captured.Kind == MessageKind.Ding;
     public string KindLabel => Model.Captured.Kind switch
     {
         MessageKind.Mention => "提到我",
@@ -41,4 +51,22 @@ public sealed class MessageCardViewModel(StoredMessage model)
     public bool CanSnooze => State != InboxState.Handled;
     public bool CanHandle => State != InboxState.Handled;
     public bool CanRestore => State == InboxState.Handled;
+
+    /// <summary>Screen readers announce list items through ToString, so describe the message in words.</summary>
+    public override string ToString()
+    {
+        var parts = new List<string>(5) { Sender, CapturedAtText };
+        if (IsDing || IsMention)
+        {
+            parts.Add(KindLabel);
+        }
+
+        if (HasSnoozedReminder)
+        {
+            parts.Add(SnoozedUntilText);
+        }
+
+        parts.Add(Body);
+        return string.Join("，", parts);
+    }
 }

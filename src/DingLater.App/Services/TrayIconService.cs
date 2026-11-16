@@ -23,6 +23,7 @@ internal sealed class TrayIconService : IDisposable
     private static readonly Uri TransparentIconUri = new("ms-appx:///Assets/DingLaterTrayTransparent.png");
 
     private readonly TaskbarIcon _icon;
+    private readonly BitmapImage _normalIconSource;
     private readonly MenuFlyoutItem _pauseItem;
     private readonly DispatcherQueueTimer _attentionTimer;
     private readonly DispatcherQueueTimer _hoverTimer;
@@ -47,6 +48,8 @@ internal sealed class TrayIconService : IDisposable
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread()
                          ?? throw new InvalidOperationException("托盘图标必须在 UI 线程创建。");
+        // One shared source: assigning a new image on every refresh made the tray icon re-render.
+        _normalIconSource = new BitmapImage(NormalIconUri);
         var openCommand = CreateDeferredCommand(dispatcher, OpenPendingOrWindow);
         var pauseCommand = CreateDeferredCommand(
             dispatcher,
@@ -66,7 +69,7 @@ internal sealed class TrayIconService : IDisposable
 
         _icon = new TaskbarIcon
         {
-            IconSource = new BitmapImage(NormalIconUri),
+            IconSource = _normalIconSource,
             ToolTipText = "DingLater · 捕获中 · 暂无待处理消息",
             ContextMenuMode = ContextMenuMode.PopupMenu,
             ContextFlyout = menu,
@@ -172,8 +175,12 @@ internal sealed class TrayIconService : IDisposable
             _attentionTimer.Stop();
             _iconVisible = false;
             _badgeText = string.Empty;
-            _icon.Icon = null;
-            _icon.IconSource = new BitmapImage(NormalIconUri);
+            if (!ReferenceEquals(_icon.IconSource, _normalIconSource))
+            {
+                _icon.Icon = null;
+                _icon.IconSource = _normalIconSource;
+            }
+
             DisposeBadgedIcons();
             return;
         }

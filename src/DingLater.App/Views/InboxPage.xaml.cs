@@ -2,10 +2,12 @@ using System.ComponentModel;
 using DingLater.App.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
-using Windows.System;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.UI.ViewManagement;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 
@@ -17,10 +19,13 @@ public sealed partial class InboxPage : Page
     private readonly UISettings _uiSettings = new();
     private readonly XamlUICommand _quickSnoozeCommand = new();
     private readonly DispatcherQueueTimer _searchTimer;
+    private readonly MenuFlyout _messageMenu = new();
+    private readonly MenuFlyoutItem _copyMenuItem;
+    private MessageCardViewModel? _menuMessage;
+    private FrameworkElement? _menuAnchor;
     private Guid? _lastAnimatedMessageId;
     private bool _twoPane;
     private bool _showingDetail;
-    private bool _subscribed = true;
     private bool _compactActionsLayout;
 
     public InboxPage(MainViewModel viewModel)
@@ -36,10 +41,28 @@ public sealed partial class InboxPage : Page
         _quickSnoozeCommand.ExecuteRequested += QuickSnoozeCommand_ExecuteRequested;
         QuickSnoozeButton.Command = _quickSnoozeCommand;
         QuickMinutesBox.Value = viewModel.QuickSnoozeMinutes;
+
+        _copyMenuItem = new MenuFlyoutItem
+        {
+            Text = "复制正文",
+            Icon = new FontIcon { Glyph = "" },
+            KeyboardAcceleratorTextOverride = "Ctrl+C"
+        };
+        _copyMenuItem.Click += (_, _) => CopyMessage(_menuMessage);
+        var infoMenuItem = new MenuFlyoutItem { Text = "消息信息", Icon = new FontIcon { Glyph = "" } };
+        infoMenuItem.Click += (_, _) =>
+        {
+            if (_menuMessage is not null && _menuAnchor is not null)
+            {
+                ShowMessageInfo(_menuMessage, _menuAnchor);
+            }
+        };
+        _messageMenu.Items.Add(_copyMenuItem);
+        _messageMenu.Items.Add(infoMenuItem);
+
         Loaded += InboxPage_Loaded;
-        SizeChanged += InboxPage_SizeChanged;
-        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         Unloaded += InboxPage_Unloaded;
+        SizeChanged += InboxPage_SizeChanged;
     }
 
     internal void RefreshFromViewModel()
@@ -58,16 +81,21 @@ public sealed partial class InboxPage : Page
         UpdateResponsiveLayout();
     }
 
+    public static Visibility BoolToVisibility(bool value) =>
+        value ? Visibility.Visible : Visibility.Collapsed;
+
     private void InboxPage_Loaded(object sender, RoutedEventArgs e)
     {
-        if (!_subscribed)
-        {
-            _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-            _subscribed = true;
-        }
-
+        // Subscribe only while in the tree: shells rebuilt for a new font scale must not leave pages listening.
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         RefreshFromViewModel();
         UpdateResponsiveLayout();
+    }
+
+    private void InboxPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _searchTimer.Stop();
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
     private void InboxPage_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateResponsiveLayout();
@@ -92,7 +120,8 @@ public sealed partial class InboxPage : Page
     {
         RefreshEmptyState();
         RefreshBulkAction();
-        QuickSnoozeButton.Content = _viewModel.QuickSnoozeText;
+        RefreshDetailHeader();
+        QuickSnoozeLabel.Text = _viewModel.QuickSnoozeText;
         var message = _viewModel.SelectedMessage;
         ActionBar.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
         var handled = _viewModel.Section == InboxSection.Handled;
@@ -107,16 +136,16 @@ public sealed partial class InboxPage : Page
         var now = DateTimeOffset.Now;
         var rememberedDue = now.AddMinutes(_viewModel.QuickSnoozeMinutes);
         QuickSnoozeButton.IsEnabled = message.ExpiresAt > now;
-        ToolTipService.SetToolTip(
-            QuickSnoozeButton,
-            rememberedDue < message.ExpiresAt
-                ? null
-                : $"当前常用时长超出清理时间 {message.ExpiresAt.LocalDateTime:M月d日 HH:mm}，可从箭头选择更短时长。");
+        var quickReason = rememberedDue < message.ExpiresAt
+            ? null
+            : $"当前常用时长超出清理时间 {message.ExpiresAt.LocalDateTime:M月d日 HH:mm}，可从箭头选择更短时长。";
+        ToolTipService.SetToolTip(QuickSnoozeButton, quickReason);
+        AutomationProperties.SetHelpText(QuickSnoozeButton, quickReason ?? string.Empty);
         _quickSnoozeCommand.NotifyCanExecuteChanged();
         SetAvailability(Preset10Button, now.AddMinutes(10) < message.ExpiresAt, "10 分钟后晚于消息清理时间。");
         SetAvailability(Preset15Button, now.AddMinutes(15) < message.ExpiresAt, "15 分钟后晚于消息清理时间。");
         SetAvailability(Preset30Button, now.AddMinutes(30) < message.ExpiresAt, "30 分钟后晚于消息清理时间。");
-        SetAvailability(Preset60Button, now.AddMinutes(60) < message.ExpiresAt, "60 分钟后晚于消息清理时间。");
+        SetAvailability(Preset60Button, now.AddMinutes(60) < message.ExpiresAt, "1 小时后晚于消息清理时间。");
         RefreshCustomMinutesAvailability();
         var tomorrow = SnoozeTimeFormatter.TomorrowAtNine(now);
         SetAvailability(
@@ -133,11 +162,24 @@ public sealed partial class InboxPage : Page
         {
             FadeInActionBar();
         }
+
         _lastAnimatedMessageId = message.Id;
+    }
+
+    private void RefreshDetailHeader()
+    {
+        var conversation = _viewModel.SelectedConversation;
+        DetailTitle.Text = conversation?.Title ?? string.Empty;
+        DetailSubtitle.Text = conversation?.ScopeText ?? string.Empty;
+        DetailAvatarText.Text = conversation?.AvatarText ?? string.Empty;
+        var group = conversation?.IsGroup == true;
+        DetailAvatarText.Visibility = group ? Visibility.Collapsed : Visibility.Visible;
+        DetailAvatarGlyph.Visibility = group ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ConversationList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Selection also changes programmatically (refreshes, arrow keys); it only syncs the view model.
         if (ConversationList.SelectedItem is not ConversationThreadViewModel conversation)
         {
             return;
@@ -145,10 +187,23 @@ public sealed partial class InboxPage : Page
 
         _viewModel.SelectedConversation = conversation;
         MessageList.SelectedItem = _viewModel.SelectedMessage;
+    }
+
+    private void ConversationList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        // Only an explicit click, tap or Enter opens the detail view in single-pane layouts.
+        if (e.ClickedItem is not ConversationThreadViewModel conversation)
+        {
+            return;
+        }
+
+        _viewModel.SelectedConversation = conversation;
         if (!_twoPane)
         {
             _showingDetail = true;
             UpdateResponsiveLayout();
+            // Move keyboard focus once the detail pane has been laid out; the clicked row just collapsed.
+            DispatcherQueue.TryEnqueue(() => MessageList.Focus(FocusState.Programmatic));
         }
     }
 
@@ -235,7 +290,7 @@ public sealed partial class InboxPage : Page
             SnoozeTimeFormatter.TomorrowAtNine(DateTimeOffset.Now));
         if (error is not null)
         {
-            await ShowInlineErrorAsync(error);
+            await ShowSnoozeErrorAsync(error);
         }
     }
 
@@ -255,8 +310,7 @@ public sealed partial class InboxPage : Page
         }
 
         var bodyFontSize = (double)Application.Current.Resources["DingBodyFontSize"];
-        var secondaryFontSize = (double)Application.Current.Resources["DingSecondaryFontSize"];
-        var textFontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe UI Variable Text");
+        var textFontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["DingTextFontFamily"];
         var datePicker = new CalendarDatePicker
         {
             Header = "日期",
@@ -277,28 +331,25 @@ public sealed partial class InboxPage : Page
             FontFamily = textFontFamily,
             FontSize = bodyFontSize
         };
+        var hint = new TextBlock
+        {
+            Style = (Style)Application.Current.Resources["DingSecondaryTextStyle"],
+            Text = $"需早于这条消息的清理时间：{message.ExpiresAt.LocalDateTime:M月d日 HH:mm}。"
+        };
         var errorText = new TextBlock
         {
+            Style = (Style)Application.Current.Resources["DingSecondaryTextStyle"],
             Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["DingDangerBrush"],
-            FontFamily = textFontFamily,
-            FontSize = secondaryFontSize,
-            TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed
         };
+        AutomationProperties.SetLiveSetting(errorText, AutomationLiveSetting.Assertive);
         var content = new StackPanel { Spacing = 12, MinWidth = 320 };
         content.Children.Add(datePicker);
         content.Children.Add(timePicker);
+        content.Children.Add(hint);
         content.Children.Add(errorText);
         DateTimeOffset? selected = null;
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "选择稍后时间",
-            Content = content,
-            PrimaryButtonText = "设为稍后",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary
-        };
+        var dialog = AppDialog.Create(XamlRoot, "选择稍后时间", content, "取消", "设为稍后", ContentDialogButton.Primary);
         dialog.PrimaryButtonClick += (_, args) =>
         {
             if (datePicker.Date is not { } date || timePicker.SelectedTime is not { } time)
@@ -321,12 +372,12 @@ public sealed partial class InboxPage : Page
 
             selected = candidate;
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && selected is { } dueAt)
+        if (await AppDialog.ShowAsync(dialog) == ContentDialogResult.Primary && selected is { } dueAt)
         {
             var error = await _viewModel.SnoozeAsync(message, dueAt);
             if (error is not null)
             {
-                await ShowInlineErrorAsync(error);
+                await ShowSnoozeErrorAsync(error);
             }
         }
     }
@@ -337,33 +388,19 @@ public sealed partial class InboxPage : Page
     private async void BulkActionButton_Click(object sender, RoutedEventArgs e)
     {
         var section = _viewModel.Section;
-        var count = section switch
-        {
-            InboxSection.Inbox => _viewModel.InboxCount,
-            InboxSection.Snoozed => _viewModel.SnoozedCount,
-            InboxSection.Handled => _viewModel.HandledCount,
-            _ => 0
-        };
+        var count = SectionCount(section);
         if (count == 0)
         {
             return;
         }
 
-        if (section == InboxSection.Handled)
+        if (section == InboxSection.Handled && !await AppDialog.ConfirmAsync(
+                XamlRoot,
+                $"删除全部 {count} 条已处理消息？",
+                "删除后无法恢复，不影响钉钉中的原消息。",
+                "全部删除"))
         {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = $"删除全部 {count} 条已处理消息？",
-                Content = "删除后无法恢复，不影响钉钉中的原消息。",
-                PrimaryButtonText = "全部删除",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close
-            };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            {
-                return;
-            }
+            return;
         }
 
         BulkActionButton.IsEnabled = false;
@@ -395,16 +432,7 @@ public sealed partial class InboxPage : Page
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "删除这条消息？",
-            Content = "删除后无法恢复，不影响钉钉中的原消息。",
-            PrimaryButtonText = "删除",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close
-        };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await AppDialog.ConfirmAsync(XamlRoot, "删除这条消息？", "删除后无法恢复，不影响钉钉中的原消息。", "删除"))
         {
             await _viewModel.DeleteAsync(message);
         }
@@ -412,12 +440,60 @@ public sealed partial class InboxPage : Page
 
     private void MessageInfoButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: MessageCardViewModel message } anchor)
+        if (sender is FrameworkElement { DataContext: MessageCardViewModel message } anchor)
+        {
+            ShowMessageInfo(message, anchor);
+        }
+    }
+
+    private void MessageList_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (args.OriginalSource is not FrameworkElement { DataContext: MessageCardViewModel message } anchor)
         {
             return;
         }
 
-        var content = new StackPanel { Spacing = 7, Width = 300, Padding = new Thickness(4) };
+        _menuMessage = message;
+        _menuAnchor = anchor;
+        _copyMenuItem.IsEnabled = message.CanCopy;
+        if (args.TryGetPosition(anchor, out var point))
+        {
+            _messageMenu.ShowAt(anchor, new FlyoutShowOptions { Position = point });
+        }
+        else
+        {
+            _messageMenu.ShowAt(anchor);
+        }
+
+        args.Handled = true;
+    }
+
+    private void CopyMessage_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (FocusManager.GetFocusedElement(XamlRoot) is TextBox)
+        {
+            return;
+        }
+
+        args.Handled = CopyMessage(_viewModel.SelectedMessage);
+    }
+
+    private static bool CopyMessage(MessageCardViewModel? message)
+    {
+        if (message is not { CanCopy: true })
+        {
+            return false;
+        }
+
+        var package = new DataPackage();
+        package.SetText(message.CopyText);
+        Clipboard.SetContent(package);
+        return true;
+    }
+
+    private static void ShowMessageInfo(MessageCardViewModel message, FrameworkElement anchor)
+    {
+        var content = new StackPanel { Spacing = 10, Width = 300 };
         content.Children.Add(InfoLine("会话", message.Conversation));
         content.Children.Add(InfoLine("时间", message.ExactCapturedAt));
         content.Children.Add(InfoLine("类型", message.KindLabel));
@@ -461,85 +537,61 @@ public sealed partial class InboxPage : Page
         var windowWidth = XamlRoot?.Size.Width ?? ActualWidth;
         var windowHeight = XamlRoot?.Size.Height ?? ActualHeight;
         var contentWidth = ActualWidth > 0 ? ActualWidth : windowWidth;
-        _twoPane = windowWidth >= 1008;
-        var compactActions = windowWidth < 720;
-        var denseHeight = windowHeight < 600;
-        BulkActionLabel.Visibility = windowWidth < 720 ? Visibility.Collapsed : Visibility.Visible;
-        RootGrid.Padding = denseHeight
-            ? new Thickness(12)
-            : compactActions
-                ? new Thickness(16)
-                : (Thickness)Application.Current.Resources["DingPagePadding"];
-        RootGrid.RowSpacing = compactActions ? 10 : 14;
-        DetailHeader.Padding = compactActions ? new Thickness(14, 8, 14, 8) : new Thickness(18, 14, 18, 14);
-        ActionBar.Padding = compactActions ? new Thickness(10) : new Thickness(14);
-        ConfigureSnoozeActionLayout(compactActions);
-        SnoozeActions.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        HandledActions.Orientation = Orientation.Horizontal;
-        HandledActions.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        foreach (var control in new Control[]
-                 {
-                     QuickSnoozeButton,
-                     TomorrowButton,
-                     ExactTimeButton,
-                     HandledButton,
-                     RestoreButton,
-                     DeleteButton
-                 })
+        _twoPane = AdaptiveLayout.IsTwoPane(windowWidth);
+        var compact = AdaptiveLayout.IsCompact(windowWidth);
+        BulkActionLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SectionSummaryText.Visibility = windowWidth < 860 ? Visibility.Collapsed : Visibility.Visible;
+        // Grow with the DingLater font scale so the placeholder is never clipped at 大 / 特大.
+        var fontScale = Math.Max(1d, (double)Application.Current.Resources["DingBodyFontSize"] / 16d);
+        SearchBox.Width = compact ? 200 : Math.Round((windowWidth < 1180 ? 260 : 320) * fontScale);
+        SearchBox.PlaceholderText = compact ? "搜索消息" : "搜索对象、发送者或正文";
+        RootGrid.Padding = AdaptiveLayout.PagePadding(windowWidth, windowHeight);
+        RootGrid.RowSpacing = compact ? 10 : 14;
+        DetailHeader.Padding = compact ? new Thickness(12, 8, 12, 8) : new Thickness(20, 14, 20, 14);
+        ActionBar.Padding = compact ? new Thickness(10) : new Thickness(16, 12, 16, 12);
+        ConfigureSnoozeActionLayout(compact);
+        foreach (var control in new Control[] { QuickSnoozeButton, TomorrowButton, ExactTimeButton, HandledButton })
         {
-            control.HorizontalAlignment = compactActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            control.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         }
 
         if (_viewModel.IsEmpty)
         {
             _showingDetail = false;
-            ConversationColumn.Width = new GridLength(1, GridUnitType.Star);
-            DividerColumn.Width = new GridLength(0);
-            DetailColumn.Width = new GridLength(0);
             ConversationPane.Visibility = Visibility.Collapsed;
-            PaneDivider.Visibility = Visibility.Collapsed;
             DetailPane.Visibility = Visibility.Collapsed;
             UnifiedEmptyState.Visibility = Visibility.Visible;
-            Grid.SetColumn(UnifiedEmptyState, 0);
-            Grid.SetColumnSpan(UnifiedEmptyState, 3);
             return;
         }
 
         UnifiedEmptyState.Visibility = Visibility.Collapsed;
-
         if (_twoPane)
         {
             var conversationWidth = contentWidth >= 1500 ? 400 : contentWidth >= 1120 ? 360 : 340;
+            PaneGrid.ColumnSpacing = 12;
             ConversationColumn.Width = new GridLength(conversationWidth);
-            DividerColumn.Width = new GridLength(1);
             DetailColumn.Width = new GridLength(1, GridUnitType.Star);
             ConversationPane.Visibility = Visibility.Visible;
-            PaneDivider.Visibility = Visibility.Visible;
             DetailPane.Visibility = Visibility.Visible;
             BackButton.Visibility = Visibility.Collapsed;
-            Grid.SetColumn(DetailPane, 2);
+            Grid.SetColumn(DetailPane, 1);
             Grid.SetColumnSpan(DetailPane, 1);
-            DetailPane.CornerRadius = new CornerRadius(0, 8, 8, 0);
-            DetailPane.BorderThickness = new Thickness(0, 1, 1, 1);
             return;
         }
 
+        PaneGrid.ColumnSpacing = 0;
         ConversationColumn.Width = new GridLength(1, GridUnitType.Star);
-        DividerColumn.Width = new GridLength(0);
         DetailColumn.Width = new GridLength(0);
-        PaneDivider.Visibility = Visibility.Collapsed;
         ConversationPane.Visibility = _showingDetail ? Visibility.Collapsed : Visibility.Visible;
         DetailPane.Visibility = _showingDetail ? Visibility.Visible : Visibility.Collapsed;
         BackButton.Visibility = _showingDetail ? Visibility.Visible : Visibility.Collapsed;
         Grid.SetColumn(DetailPane, 0);
-        Grid.SetColumnSpan(DetailPane, 3);
-        DetailPane.CornerRadius = new CornerRadius(8);
-        DetailPane.BorderThickness = new Thickness(1);
+        Grid.SetColumnSpan(DetailPane, 2);
     }
 
     private void ConfigureSnoozeActionLayout(bool compact)
     {
-        if (_compactActionsLayout == compact)
+        if (_compactActionsLayout == compact && SnoozeActions.ColumnDefinitions.Count > 0)
         {
             return;
         }
@@ -553,74 +605,54 @@ public sealed partial class InboxPage : Page
             SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            Grid.SetRow(QuickSnoozeButton, 0);
-            Grid.SetColumn(QuickSnoozeButton, 0);
-            Grid.SetRow(TomorrowButton, 0);
-            Grid.SetColumn(TomorrowButton, 1);
-            Grid.SetRow(ExactTimeButton, 1);
-            Grid.SetColumn(ExactTimeButton, 0);
-            Grid.SetRow(HandledButton, 1);
-            Grid.SetColumn(HandledButton, 1);
+            Place(QuickSnoozeButton, 0, 0);
+            Place(TomorrowButton, 0, 1);
+            Place(ExactTimeButton, 1, 0);
+            Place(HandledButton, 1, 1);
             return;
         }
 
-        for (var index = 0; index < 4; index++)
+        // Snooze choices on the left, the primary "已处理" action pinned to the right edge.
+        foreach (var width in new[] { GridLength.Auto, GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto })
         {
-            SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            SnoozeActions.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
         }
 
         SnoozeActions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        foreach (var (control, column) in new (Control Control, int Column)[]
-                 {
-                     (QuickSnoozeButton, 0),
-                     (TomorrowButton, 1),
-                     (ExactTimeButton, 2),
-                     (HandledButton, 3)
-                 })
+        Place(QuickSnoozeButton, 0, 0);
+        Place(TomorrowButton, 0, 1);
+        Place(ExactTimeButton, 0, 2);
+        Place(HandledButton, 0, 4);
+
+        static void Place(FrameworkElement element, int row, int column)
         {
-            Grid.SetRow(control, 0);
-            Grid.SetColumn(control, column);
+            Grid.SetRow(element, row);
+            Grid.SetColumn(element, column);
         }
     }
 
     private void RefreshEmptyState()
     {
-        ClearSearchButton.Visibility = string.IsNullOrWhiteSpace(_viewModel.SearchText)
-            ? Visibility.Collapsed : Visibility.Visible;
-        if (!string.IsNullOrWhiteSpace(_viewModel.SearchText))
-        {
-            EmptyTitle.Text = "没有匹配的消息";
-            EmptyDescription.Text = "试试对象名、发送者或正文中的其他关键词。";
-        }
-        else
-        {
-            (EmptyTitle.Text, EmptyDescription.Text) = _viewModel.Section switch
+        var searching = !string.IsNullOrWhiteSpace(_viewModel.SearchText);
+        ClearSearchButton.Visibility = searching ? Visibility.Visible : Visibility.Collapsed;
+        (EmptyIcon.Glyph, EmptyTitle.Text, EmptyDescription.Text) = searching
+            ? ("", "没有匹配的消息", "试试对象名、发送者或正文中的其他关键词。")
+            : _viewModel.Section switch
             {
-                InboxSection.Snoozed => ("没有稍后提醒", "设置过稍后提醒的消息会出现在这里。"),
-                InboxSection.Handled => ("还没有已处理消息", "处理过的消息会保留到清理时间。"),
-                _ => ("待处理已清空", "新消息会按会话归拢到这里。")
+                InboxSection.Snoozed => ("", "没有稍后提醒", "设置过稍后提醒的消息会出现在这里，到时间后回到待处理。"),
+                InboxSection.Handled => ("", "还没有已处理消息", "处理过的消息会保留到清理时间，可随时移回待处理。"),
+                _ => ("", "待处理已清空", "新消息会按会话归拢到这里。")
             };
-        }
-
         UnifiedEmptyState.Visibility = _viewModel.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshBulkAction()
     {
         var handled = _viewModel.Section == InboxSection.Handled;
-        var count = _viewModel.Section switch
-        {
-            InboxSection.Inbox => _viewModel.InboxCount,
-            InboxSection.Snoozed => _viewModel.SnoozedCount,
-            InboxSection.Handled => _viewModel.HandledCount,
-            _ => 0
-        };
-        BulkActionButton.Visibility = Visibility.Visible;
+        var count = SectionCount(_viewModel.Section);
+        VisualStateManager.GoToState(this, handled ? "HandledSection" : "ActiveSection", false);
         BulkActionButton.IsEnabled = count > 0 && !_viewModel.IsBusy;
-        BulkActionIcon.Glyph = handled ? "\uE74D" : "\uE73E";
         BulkActionLabel.Text = handled ? "全部删除" : "全部标为已处理";
-        BulkActionButton.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-            handled ? "DingDangerBrush" : "DingTextBrush"];
         var action = handled ? "删除" : "标为已处理";
         AutomationProperties.SetName(BulkActionButton, $"将全部 {count} 条消息{action}");
         ToolTipService.SetToolTip(
@@ -628,8 +660,13 @@ public sealed partial class InboxPage : Page
             count > 0 ? $"将本分类中的全部 {count} 条消息{action}" : $"没有可{action}的消息");
     }
 
-    public static Visibility BoolToVisibility(bool value) =>
-        value ? Visibility.Visible : Visibility.Collapsed;
+    private int SectionCount(InboxSection section) => section switch
+    {
+        InboxSection.Inbox => _viewModel.InboxCount,
+        InboxSection.Snoozed => _viewModel.SnoozedCount,
+        InboxSection.Handled => _viewModel.HandledCount,
+        _ => 0
+    };
 
     private void FadeInActionBar()
     {
@@ -650,6 +687,7 @@ public sealed partial class InboxPage : Page
     {
         control.IsEnabled = available;
         ToolTipService.SetToolTip(control, available ? null : unavailableReason);
+        AutomationProperties.SetHelpText(control, available ? string.Empty : unavailableReason);
     }
 
     private void RefreshCustomMinutesAvailability()
@@ -668,43 +706,21 @@ public sealed partial class InboxPage : Page
 
     private static FrameworkElement InfoLine(string label, string value)
     {
-        var bodyFontSize = (double)Application.Current.Resources["DingBodyFontSize"];
-        var secondaryFontSize = (double)Application.Current.Resources["DingSecondaryFontSize"];
-        var textFontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe UI Variable Text");
         var panel = new StackPanel { Spacing = 2 };
         panel.Children.Add(new TextBlock
         {
             Text = label,
-            FontFamily = textFontFamily,
-            FontSize = secondaryFontSize,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["DingSecondaryTextBrush"]
+            Style = (Style)Application.Current.Resources["DingCaptionTextStyle"]
         });
         panel.Children.Add(new TextBlock
         {
             Text = value,
-            FontFamily = textFontFamily,
-            FontSize = bodyFontSize,
-            TextWrapping = TextWrapping.Wrap
+            Style = (Style)Application.Current.Resources["DingBodyTextStyle"],
+            IsTextSelectionEnabled = true
         });
         return panel;
     }
 
-    private async Task ShowInlineErrorAsync(string message)
-    {
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "无法设置稍后时间",
-            Content = message,
-            CloseButtonText = "知道了"
-        };
-        await dialog.ShowAsync();
-    }
-
-    private void InboxPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        _searchTimer.Stop();
-        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        _subscribed = false;
-    }
+    private Task ShowSnoozeErrorAsync(string message) =>
+        AppDialog.AlertAsync(XamlRoot, "无法设置稍后时间", message);
 }

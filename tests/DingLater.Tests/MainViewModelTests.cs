@@ -246,6 +246,80 @@ public sealed class MainViewModelTests
         Assert.AreEqual(1, viewModel.SnoozedCount);
     }
 
+    [TestMethod]
+    public async Task DayRollover_RebuildsRelativeLabelsAndKeepsSelection()
+    {
+        var start = new DateTimeOffset(new DateTime(2026, 8, 4, 23, 50, 0, DateTimeKind.Local));
+        var clock = new ManualClock(start);
+        var store = new MutableStore();
+        store.Messages.Add(Stored("group", "person", "body", ConversationScope.Group, start.AddMinutes(-5)));
+        store.Messages.Add(Stored("other", "someone", "body", ConversationScope.Direct, start.AddMinutes(-9)));
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        using var viewModel = new MainViewModel(inbox, new StartupService(), clock: clock);
+        await viewModel.RefreshAsync();
+        viewModel.SelectedConversation = viewModel.Conversations[1];
+        var before = viewModel.SelectedConversation;
+        Assert.AreEqual("23:41", before.LatestAtText);
+
+        viewModel.RefreshIfDayChanged();
+        await viewModel.RefreshAsync();
+        Assert.AreSame(before, viewModel.SelectedConversation, "Same-day refreshes must reuse unchanged threads.");
+
+        clock.Now = start.AddMinutes(20);
+        viewModel.RefreshIfDayChanged();
+        await viewModel.RefreshAsync();
+
+        Assert.AreNotSame(before, viewModel.SelectedConversation);
+        Assert.AreEqual(before.Key, viewModel.SelectedConversation?.Key);
+        Assert.AreEqual("昨天", viewModel.SelectedConversation?.LatestAtText);
+    }
+
+    [TestMethod]
+    public async Task SectionSummary_CountsVisibleConversationsAndMessages()
+    {
+        var now = DateTimeOffset.Now;
+        var store = new MutableStore();
+        store.Messages.Add(Stored("研发协作群", "周远", "日志", ConversationScope.Group, now));
+        store.Messages.Add(Stored("研发协作群", "小林", "评审", ConversationScope.Group, now.AddMinutes(-1)));
+        store.Messages.Add(Stored("阿青", "阿青", "文件", ConversationScope.Direct, now.AddMinutes(-2)));
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.RefreshAsync();
+
+        Assert.AreEqual("2 个会话 · 3 条消息", viewModel.SectionSummary);
+        viewModel.SearchText = "评审";
+        Assert.AreEqual("找到 1 个会话 · 2 条消息", viewModel.SectionSummary);
+        viewModel.SearchText = "不存在";
+        Assert.AreEqual(string.Empty, viewModel.SectionSummary);
+    }
+
+    [TestMethod]
+    public async Task CaptureStatus_ReportsWaitingThenPausedWithExplanation()
+    {
+        var store = new MutableStore();
+        await using var inbox = new InboxService(store, new FakeReminders(), []);
+        await inbox.InitializeAsync();
+        using var viewModel = new MainViewModel(inbox, new StartupService());
+        await viewModel.InitializeAsync();
+
+        Assert.AreEqual(CaptureStatusKind.Waiting, viewModel.CaptureStatus);
+        Assert.AreEqual("等待钉钉", viewModel.StatusText);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(viewModel.CaptureStatusDetail));
+
+        Assert.IsTrue(await viewModel.ToggleCaptureAsync());
+
+        Assert.AreEqual(CaptureStatusKind.Paused, viewModel.CaptureStatus);
+        Assert.AreEqual("捕获已暂停", viewModel.StatusText);
+        StringAssert.Contains(viewModel.CaptureStatusDetail, "稍后提醒不受影响");
+    }
+
+    private sealed class ManualClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
+    }
+
     private static StoredMessage Stored(
         string conversation,
         string sender,

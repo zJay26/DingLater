@@ -3,7 +3,6 @@ using H.NotifyIcon;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 
@@ -97,22 +96,10 @@ public sealed partial class MainWindow : Window
             finally { RootGrid.Loaded -= OnLoaded; }
         }
 
-        var dialog = new ContentDialog
+        if (RootGrid.XamlRoot is { } xamlRoot)
         {
-            XamlRoot = RootGrid.XamlRoot,
-            Title = title,
-            Content = new TextBlock
-            {
-                Text = message,
-                FontFamily = new FontFamily("Segoe UI Variable Text"),
-                FontSize = (double)Application.Current.Resources["DingBodyFontSize"],
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 520
-            },
-            CloseButtonText = "关闭",
-            DefaultButton = ContentDialogButton.Close
-        };
-        await dialog.ShowAsync();
+            await AppDialog.AlertAsync(xamlRoot, title, message, "关闭");
+        }
     }
 
     private void RootGrid_Loaded(object sender, RoutedEventArgs e)

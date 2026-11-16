@@ -7,81 +7,133 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
     <Page.KeyboardAccelerators>
-        <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="FocusSearch_Invoked" />
-        <KeyboardAccelerator Key="Left" Modifiers="Menu" Invoked="Back_Invoked" />
+        <KeyboardAccelerator Key="F" Invoked="FocusSearch_Invoked" Modifiers="Control" />
+        <KeyboardAccelerator Key="Left" Invoked="Back_Invoked" Modifiers="Menu" />
     </Page.KeyboardAccelerators>
+    <Page.Resources>
+        <Style x:Key="ConversationItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="MinHeight" Value="64" />
+        </Style>
+        <Style x:Key="MessageItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="16,0,8,0" />
+            <Setter Property="MinHeight" Value="56" />
+        </Style>
+        <Style x:Key="ActionIconStyle" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Page.Resources>
     <Grid x:Name="RootGrid" Padding="{StaticResource DingPagePadding}" RowSpacing="14">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="SectionStates">
+                <VisualState x:Name="ActiveSection" />
+                <VisualState x:Name="HandledSection">
+                    <VisualState.Setters>
+                        <Setter Target="BulkActionIcon.Foreground" Value="{ThemeResource DingDangerBrush}" />
+                        <Setter Target="BulkActionLabel.Foreground" Value="{ThemeResource DingDangerBrush}" />
+                        <Setter Target="BulkActionIcon.Glyph" Value="&#xE74D;" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid ColumnSpacing="14">
+        <Grid x:Name="HeaderGrid" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Style="{StaticResource DingPageTitleStyle}" Text="{Binding SectionTitle}" />
+            <TextBlock
+                VerticalAlignment="Center"
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource DingPageTitleStyle}"
+                Text="{Binding SectionTitle}"
+                TextWrapping="NoWrap" />
+            <TextBlock
+                x:Name="SectionSummaryText"
+                Grid.Column="1"
+                Margin="0,6,0,0"
+                VerticalAlignment="Center"
+                Style="{StaticResource DingSecondaryTextStyle}"
+                Text="{Binding SectionSummary}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="NoWrap" />
             <Button
                 x:Name="BulkActionButton"
-                Grid.Column="1"
+                Grid.Column="2"
                 VerticalAlignment="Center"
-                AutomationProperties.Name="批量操作"
                 Click="BulkActionButton_Click"
                 Style="{StaticResource DingQuietButtonStyle}">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                    <FontIcon x:Name="BulkActionIcon" FontSize="15" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon
+                        x:Name="BulkActionIcon"
+                        Glyph="&#xE73E;"
+                        Style="{StaticResource ActionIconStyle}" />
                     <TextBlock x:Name="BulkActionLabel" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
             <AutoSuggestBox
                 x:Name="SearchBox"
-                Grid.Column="2"
-                MaxWidth="380"
-                MinWidth="180"
-                HorizontalAlignment="Right"
+                Grid.Column="3"
+                Width="300"
+                VerticalAlignment="Center"
                 AutomationProperties.Name="搜索消息"
-                FontFamily="Segoe UI Variable Text"
+                FontFamily="{StaticResource DingTextFontFamily}"
                 FontSize="{ThemeResource DingBodyFontSize}"
                 PlaceholderText="搜索对象、发送者或正文"
                 QueryIcon="Find"
                 QuerySubmitted="SearchBox_QuerySubmitted"
-                TextChanged="SearchBox_TextChanged" />
+                TextChanged="SearchBox_TextChanged"
+                ToolTipService.ToolTip="搜索（Ctrl+F）" />
         </Grid>
 
-        <Grid x:Name="PaneGrid" Grid.Row="1">
+        <Grid x:Name="PaneGrid" Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ConversationColumn" Width="340" />
-                <ColumnDefinition x:Name="DividerColumn" Width="1" />
                 <ColumnDefinition x:Name="DetailColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border
-                x:Name="ConversationPane"
-                Grid.Column="0"
-                Background="{ThemeResource DingSurfaceBrush}"
-                BorderBrush="{ThemeResource DingDividerBrush}"
-                BorderThickness="1"
-                CornerRadius="8,0,0,8">
-                <Grid>
-                    <ListView
-                        x:Name="ConversationList"
-                        AutomationProperties.Name="会话列表"
-                        ItemsSource="{Binding Conversations}"
-                        SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
-                        SelectionChanged="ConversationList_SelectionChanged"
-                        SelectionMode="Single">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="MinHeight" Value="76" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ConversationThreadViewModel">
-                                <Grid Padding="16,13" ColumnSpacing="10" RowSpacing="5">
+            <Border x:Name="ConversationPane" Style="{StaticResource DingSurfaceBorderStyle}">
+                <ListView
+                    x:Name="ConversationList"
+                    Padding="0,4"
+                    AutomationProperties.Name="会话列表"
+                    IsItemClickEnabled="True"
+                    ItemClick="ConversationList_ItemClick"
+                    ItemContainerStyle="{StaticResource ConversationItemStyle}"
+                    ItemsSource="{Binding Conversations}"
+                    SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                    SelectionChanged="ConversationList_SelectionChanged"
+                    SelectionMode="Single">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ConversationThreadViewModel">
+                            <Grid Padding="0,12" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource DingAvatarStyle}">
+                                    <Grid>
+                                        <TextBlock
+                                            Style="{StaticResource DingAvatarTextStyle}"
+                                            Text="{x:Bind AvatarText}"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(IsDirect)}" />
+                                        <FontIcon
+                                            FontSize="{ThemeResource DingAvatarFontSize}"
+                                            Foreground="{ThemeResource DingAccentTextBrush}"
+                                            Glyph="&#xE716;"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(IsGroup)}" />
+                                    </Grid>
+                                </Border>
+                                <Grid Grid.Column="1" ColumnSpacing="8" RowSpacing="3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -92,190 +144,268 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock
-                                        MaxLines="1"
                                         Style="{StaticResource DingConversationTitleStyle}"
                                         Text="{x:Bind Title}"
-                                        TextTrimming="CharacterEllipsis" />
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
                                     <TextBlock
                                         Grid.Column="1"
-                                        Style="{StaticResource DingSecondaryTextStyle}"
-                                        Text="{x:Bind LatestAtText}" />
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource DingCaptionTextStyle}"
+                                        Text="{x:Bind LatestAtText}"
+                                        TextWrapping="NoWrap" />
                                     <TextBlock
                                         Grid.Row="1"
                                         MaxLines="2"
                                         Style="{StaticResource DingSecondaryTextStyle}"
                                         Text="{x:Bind Subtitle}"
                                         TextTrimming="CharacterEllipsis" />
-                                    <TextBlock
+                                    <Border
                                         Grid.Row="1"
                                         Grid.Column="1"
-                                        VerticalAlignment="Bottom"
-                                        Style="{StaticResource DingSecondaryTextStyle}"
-                                        Text="{x:Bind CountText}" />
-                                    <TextBlock
+                                        Margin="0,1,0,0"
+                                        VerticalAlignment="Top"
+                                        HorizontalAlignment="Right"
+                                        Style="{StaticResource DingChipStyle}"
+                                        Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasCount)}">
+                                        <TextBlock Style="{StaticResource DingChipTextStyle}" Text="{x:Bind CountText}" />
+                                    </Border>
+                                    <StackPanel
                                         Grid.Row="2"
                                         Grid.ColumnSpan="2"
-                                        Foreground="{ThemeResource DingAccentBrush}"
-                                        Style="{StaticResource DingSecondaryTextStyle}"
-                                        Text="{x:Bind ReminderText}"
-                                        Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasReminder)}" />
+                                        Margin="0,3,0,0"
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasTags)}">
+                                        <Border
+                                            Background="{ThemeResource DingDangerSoftBrush}"
+                                            Style="{StaticResource DingChipStyle}"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasDing)}">
+                                            <TextBlock
+                                                Foreground="{ThemeResource DingDangerBrush}"
+                                                Style="{StaticResource DingChipTextStyle}"
+                                                Text="DING" />
+                                        </Border>
+                                        <Border
+                                            Style="{StaticResource DingChipStyle}"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasMention)}">
+                                            <TextBlock Style="{StaticResource DingChipTextStyle}" Text="@我" />
+                                        </Border>
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="5"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasReminder)}">
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource DingAccentTextBrush}"
+                                                Glyph="&#xE823;" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource DingAccentTextBrush}"
+                                                Style="{StaticResource DingCaptionTextStyle}"
+                                                Text="{x:Bind ReminderText}"
+                                                TextWrapping="NoWrap" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </Border>
 
             <Border
-                x:Name="PaneDivider"
-                Grid.Column="1"
-                Background="{ThemeResource DingDividerBrush}" />
-
-            <Border
                 x:Name="DetailPane"
-                Grid.Column="2"
+                Grid.Column="1"
                 Background="{ThemeResource DingSurfaceRaisedBrush}"
                 BorderBrush="{ThemeResource DingDividerBrush}"
-                BorderThickness="0,1,1,1"
-                CornerRadius="0,8,8,0">
+                BorderThickness="1"
+                CornerRadius="{StaticResource DingPaneCornerRadius}">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid x:Name="DetailHeader" Padding="18,14" ColumnSpacing="10">
+                    <Grid x:Name="DetailHeader" Padding="20,14" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button
                             x:Name="BackButton"
-                            Click="BackButton_Click"
-                            Style="{StaticResource DingQuietButtonStyle}"
-                            ToolTipService.ToolTip="返回会话列表"
-                            Visibility="Collapsed">
-                            <FontIcon Glyph="&#xE72B;" />
-                        </Button>
-                        <TextBlock
-                            Grid.Column="1"
-                            MaxLines="1"
                             VerticalAlignment="Center"
-                            Style="{StaticResource DingConversationTitleStyle}"
-                            Text="{Binding SelectedConversation.Title}"
-                            TextTrimming="CharacterEllipsis" />
+                            AutomationProperties.Name="返回会话列表"
+                            Click="BackButton_Click"
+                            Style="{StaticResource DingIconButtonStyle}"
+                            ToolTipService.ToolTip="返回会话列表（Alt+←）"
+                            Visibility="Collapsed">
+                            <FontIcon FontSize="16" Glyph="&#xE72B;" />
+                        </Button>
+                        <Border
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Style="{StaticResource DingAvatarStyle}">
+                            <Grid>
+                                <TextBlock x:Name="DetailAvatarText" Style="{StaticResource DingAvatarTextStyle}" />
+                                <FontIcon
+                                    x:Name="DetailAvatarGlyph"
+                                    FontSize="{ThemeResource DingAvatarFontSize}"
+                                    Foreground="{ThemeResource DingAccentTextBrush}"
+                                    Glyph="&#xE716;"
+                                    Visibility="Collapsed" />
+                            </Grid>
+                        </Border>
+                        <StackPanel
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                            <TextBlock
+                                x:Name="DetailTitle"
+                                AutomationProperties.HeadingLevel="Level2"
+                                Style="{StaticResource DingSubtitleTextStyle}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="NoWrap" />
+                            <TextBlock
+                                x:Name="DetailSubtitle"
+                                Style="{StaticResource DingSecondaryTextStyle}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="NoWrap" />
+                        </StackPanel>
                     </Grid>
+
+                    <Rectangle
+                        Grid.Row="1"
+                        Height="1"
+                        Fill="{ThemeResource DingDividerBrush}" />
 
                     <ListView
                         x:Name="MessageList"
-                        Grid.Row="1"
+                        Grid.Row="2"
+                        Padding="0,6"
                         AutomationProperties.Name="当前会话消息"
+                        ContextRequested="MessageList_ContextRequested"
+                        ItemContainerStyle="{StaticResource MessageItemStyle}"
                         ItemsSource="{Binding SelectedConversation.Messages}"
                         SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"
                         SelectionChanged="MessageList_SelectionChanged"
                         SelectionMode="Single">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="MinHeight" Value="70" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
+                        <ListView.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="C" Invoked="CopyMessage_Invoked" Modifiers="Control" />
+                        </ListView.KeyboardAccelerators>
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:MessageCardViewModel">
-                                <Border
-                                    Padding="18,8"
-                                    BorderBrush="{ThemeResource DingDividerBrush}"
-                                    BorderThickness="0,0,0,1">
-                                    <Grid RowSpacing="5">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <Grid ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock
-                                                MaxLines="1"
-                                                Style="{StaticResource DingConversationTitleStyle}"
-                                                Text="{x:Bind Sender}"
-                                                TextTrimming="CharacterEllipsis" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                Style="{StaticResource DingSecondaryTextStyle}"
-                                                Text="{x:Bind CapturedAtText}" />
-                                            <Button
-                                                Grid.Column="2"
-                                                Width="40"
-                                                Height="40"
-                                                MinWidth="40"
-                                                MinHeight="40"
-                                                Padding="0"
-                                                AutomationProperties.Name="消息信息"
-                                                Click="MessageInfoButton_Click"
-                                                DataContext="{x:Bind}"
-                                                Style="{StaticResource DingQuietButtonStyle}"
-                                                ToolTipService.ToolTip="消息信息">
-                                                <FontIcon Glyph="&#xE712;" />
-                                            </Button>
-                                        </Grid>
+                                <!-- Margins instead of RowSpacing: a collapsed reminder row must not leave a gap. -->
+                                <Grid Padding="0,10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource DingBodyStrongTextStyle}"
+                                            Text="{x:Bind Sender}"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="NoWrap" />
                                         <Border
-                                            Grid.Row="1"
-                                            Margin="0,2,0,1"
-                                            Padding="9,5"
-                                            HorizontalAlignment="Left"
-                                            AutomationProperties.Name="{x:Bind SnoozedUntilText}"
-                                            Background="{ThemeResource DingAccentSoftBrush}"
-                                            BorderBrush="{ThemeResource DingAccentBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="6"
-                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasSnoozedReminder)}">
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <FontIcon
-                                                    FontSize="14"
-                                                    Foreground="{ThemeResource DingAccentBrush}"
-                                                    Glyph="&#xE823;" />
-                                                <TextBlock
-                                                    VerticalAlignment="Center"
-                                                    Foreground="{ThemeResource DingAccentBrush}"
-                                                    FontWeight="SemiBold"
-                                                    Style="{StaticResource DingBodyTextStyle}"
-                                                    Text="{x:Bind SnoozedUntilText}" />
-                                            </StackPanel>
+                                            Grid.Column="1"
+                                            Background="{ThemeResource DingDangerSoftBrush}"
+                                            Style="{StaticResource DingChipStyle}"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(IsDing)}">
+                                            <TextBlock
+                                                Foreground="{ThemeResource DingDangerBrush}"
+                                                Style="{StaticResource DingChipTextStyle}"
+                                                Text="DING" />
+                                        </Border>
+                                        <Border
+                                            Grid.Column="1"
+                                            Style="{StaticResource DingChipStyle}"
+                                            Visibility="{x:Bind local:InboxPage.BoolToVisibility(IsMention)}">
+                                            <TextBlock Style="{StaticResource DingChipTextStyle}" Text="@我" />
                                         </Border>
                                         <TextBlock
-                                            Grid.Row="2"
-                                            Style="{StaticResource DingBodyTextStyle}"
-                                            Text="{x:Bind Body}" />
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource DingCaptionTextStyle}"
+                                            Text="{x:Bind CapturedAtText}"
+                                            TextWrapping="NoWrap" />
+                                        <Button
+                                            Grid.Column="4"
+                                            Width="28"
+                                            Height="28"
+                                            Margin="0,-4"
+                                            AutomationProperties.Name="消息信息"
+                                            Click="MessageInfoButton_Click"
+                                            DataContext="{x:Bind}"
+                                            Style="{StaticResource DingIconButtonStyle}"
+                                            ToolTipService.ToolTip="消息信息">
+                                            <FontIcon FontSize="14" Glyph="&#xE946;" />
+                                        </Button>
                                     </Grid>
-                                </Border>
+                                    <Border
+                                        Grid.Row="1"
+                                        Margin="0,8,0,0"
+                                        Padding="8,3,10,4"
+                                        HorizontalAlignment="Left"
+                                        AutomationProperties.Name="{x:Bind SnoozedUntilText}"
+                                        Style="{StaticResource DingChipStyle}"
+                                        Visibility="{x:Bind local:InboxPage.BoolToVisibility(HasSnoozedReminder)}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                FontSize="13"
+                                                Foreground="{ThemeResource DingAccentTextBrush}"
+                                                Glyph="&#xE823;" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontWeight="SemiBold"
+                                                Foreground="{ThemeResource DingAccentTextBrush}"
+                                                Style="{StaticResource DingSecondaryTextStyle}"
+                                                Text="{x:Bind SnoozedUntilText}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock
+                                        Grid.Row="2"
+                                        Margin="0,6,8,0"
+                                        Style="{StaticResource DingBodyTextStyle}"
+                                        Text="{x:Bind Body}" />
+                                </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
 
                     <Border
                         x:Name="ActionBar"
-                        Grid.Row="2"
-                        Padding="14"
-                        Background="{ThemeResource DingAccentSoftBrush}"
+                        Grid.Row="3"
+                        Padding="16,12"
+                        Background="{ThemeResource DingSurfaceBrush}"
                         BorderBrush="{ThemeResource DingDividerBrush}"
-                        BorderThickness="0,1,0,0">
+                        BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,7,7">
                         <Grid>
                             <Grid
                                 x:Name="SnoozeActions"
-                                HorizontalAlignment="Left"
                                 ColumnSpacing="8"
                                 RowSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
@@ -283,13 +413,17 @@
                                 </Grid.RowDefinitions>
                                 <SplitButton
                                     x:Name="QuickSnoozeButton"
-                                    FontFamily="Segoe UI Variable Text"
-                                    FontSize="{ThemeResource DingBodyFontSize}"
-                                    MinHeight="{StaticResource DingControlHeight}">
+                                    MinHeight="{ThemeResource DingControlHeight}"
+                                    FontFamily="{StaticResource DingTextFontFamily}"
+                                    FontSize="{ThemeResource DingBodyFontSize}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE823;" Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock x:Name="QuickSnoozeLabel" VerticalAlignment="Center" />
+                                    </StackPanel>
                                     <SplitButton.Flyout>
-                                        <Flyout>
-                                            <StackPanel Width="280" Spacing="10">
-                                                <TextBlock Style="{StaticResource DingConversationTitleStyle}" Text="稍后多久" />
+                                        <Flyout Placement="TopEdgeAlignedLeft">
+                                            <StackPanel Width="280" Spacing="12">
+                                                <TextBlock Style="{StaticResource DingBodyStrongTextStyle}" Text="稍后多久" />
                                                 <Grid ColumnSpacing="8" RowSpacing="8">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
@@ -299,16 +433,16 @@
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
-                                                    <Button x:Name="Preset10Button" Click="PresetSnoozeButton_Click" Content="10 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="10" />
-                                                    <Button x:Name="Preset15Button" Grid.Column="1" Click="PresetSnoozeButton_Click" Content="15 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="15" />
-                                                    <Button x:Name="Preset30Button" Grid.Row="1" Click="PresetSnoozeButton_Click" Content="30 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="30" />
-                                                    <Button x:Name="Preset60Button" Grid.Row="1" Grid.Column="1" Click="PresetSnoozeButton_Click" Content="60 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="60" />
+                                                    <Button x:Name="Preset10Button" HorizontalAlignment="Stretch" Click="PresetSnoozeButton_Click" Content="10 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="10" />
+                                                    <Button x:Name="Preset15Button" Grid.Column="1" HorizontalAlignment="Stretch" Click="PresetSnoozeButton_Click" Content="15 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="15" />
+                                                    <Button x:Name="Preset30Button" Grid.Row="1" HorizontalAlignment="Stretch" Click="PresetSnoozeButton_Click" Content="30 分钟" Style="{StaticResource DingQuietButtonStyle}" Tag="30" />
+                                                    <Button x:Name="Preset60Button" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" Click="PresetSnoozeButton_Click" Content="1 小时" Style="{StaticResource DingQuietButtonStyle}" Tag="60" />
                                                 </Grid>
                                                 <NumberBox
                                                     x:Name="QuickMinutesBox"
-                                                    Header="其他分钟数"
-                                                    FontFamily="Segoe UI Variable Text"
+                                                    FontFamily="{StaticResource DingTextFontFamily}"
                                                     FontSize="{ThemeResource DingBodyFontSize}"
+                                                    Header="其他时长（分钟）"
                                                     Maximum="1440"
                                                     Minimum="1"
                                                     SmallChange="1"
@@ -327,40 +461,74 @@
                                 <Button
                                     x:Name="TomorrowButton"
                                     Grid.Column="1"
+                                    AutomationProperties.Name="稍后到明早 9:00"
                                     Click="TomorrowButton_Click"
-                                    Content="明早 9:00"
-                                    Style="{StaticResource DingQuietButtonStyle}" />
+                                    Style="{StaticResource DingQuietButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE706;" Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock VerticalAlignment="Center" Text="明早 9:00" />
+                                    </StackPanel>
+                                </Button>
                                 <Button
                                     x:Name="ExactTimeButton"
                                     Grid.Column="2"
+                                    AutomationProperties.Name="选择稍后日期和时间"
                                     Click="ExactTimeButton_Click"
-                                    Content="选择日期时间…"
-                                    Style="{StaticResource DingQuietButtonStyle}" />
+                                    Style="{StaticResource DingQuietButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE787;" Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock VerticalAlignment="Center" Text="选择时间…" />
+                                    </StackPanel>
+                                </Button>
                                 <Button
                                     x:Name="HandledButton"
-                                    Grid.Column="3"
+                                    Grid.Column="4"
+                                    AutomationProperties.Name="标记为已处理"
                                     Click="HandledButton_Click"
-                                    Content="已处理"
-                                    Style="{StaticResource DingPrimaryButtonStyle}" />
+                                    Style="{StaticResource DingPrimaryButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE73E;" Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock VerticalAlignment="Center" Text="已处理" />
+                                    </StackPanel>
+                                </Button>
                             </Grid>
-                            <StackPanel
+                            <Grid
                                 x:Name="HandledActions"
-                                HorizontalAlignment="Left"
-                                Orientation="Horizontal"
-                                Spacing="8"
+                                ColumnSpacing="8"
                                 Visibility="Collapsed">
-                                <Button
-                                    x:Name="RestoreButton"
-                                    Click="RestoreButton_Click"
-                                    Content="回到待处理"
-                                    Style="{StaticResource DingPrimaryButtonStyle}" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <Button
                                     x:Name="DeleteButton"
+                                    AutomationProperties.Name="删除这条消息"
                                     Click="DeleteButton_Click"
-                                    Content="删除消息"
-                                    Foreground="{ThemeResource DingDangerBrush}"
-                                    Style="{StaticResource DingQuietButtonStyle}" />
-                            </StackPanel>
+                                    Style="{StaticResource DingQuietButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon
+                                            Foreground="{ThemeResource DingDangerBrush}"
+                                            Glyph="&#xE74D;"
+                                            Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource DingDangerBrush}"
+                                            Text="删除消息" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="RestoreButton"
+                                    Grid.Column="2"
+                                    AutomationProperties.Name="移回待处理"
+                                    Click="RestoreButton_Click"
+                                    Style="{StaticResource DingPrimaryButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE7A7;" Style="{StaticResource ActionIconStyle}" />
+                                        <TextBlock VerticalAlignment="Center" Text="回到待处理" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
@@ -368,41 +536,45 @@
 
             <Border
                 x:Name="UnifiedEmptyState"
-                Grid.ColumnSpan="3"
+                Grid.ColumnSpan="2"
                 Background="{ThemeResource DingSurfaceRaisedBrush}"
                 BorderBrush="{ThemeResource DingDividerBrush}"
                 BorderThickness="1"
-                CornerRadius="8"
+                CornerRadius="{StaticResource DingPaneCornerRadius}"
                 Visibility="Collapsed">
                 <StackPanel
-                    MaxWidth="440"
+                    MaxWidth="420"
+                    Padding="24"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="10">
+                    Spacing="8">
                     <Border
-                        Width="58"
-                        Height="58"
+                        Width="64"
+                        Height="64"
+                        Margin="0,0,0,8"
                         HorizontalAlignment="Center"
                         Background="{ThemeResource DingAccentSoftBrush}"
-                        CornerRadius="29">
+                        CornerRadius="32">
                         <FontIcon
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            FontSize="26"
+                            x:Name="EmptyIcon"
+                            FontSize="28"
                             Foreground="{ThemeResource DingAccentBrush}"
-                            Glyph="&#xE8F4;" />
+                            Glyph="&#xE930;" />
                     </Border>
                     <TextBlock
                         x:Name="EmptyTitle"
-                        Style="{StaticResource DingConversationTitleStyle}"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Style="{StaticResource DingSubtitleTextStyle}"
                         TextAlignment="Center" />
                     <TextBlock
                         x:Name="EmptyDescription"
+                        HorizontalAlignment="Center"
                         Style="{StaticResource DingSecondaryTextStyle}"
-                        TextAlignment="Center"
-                        TextWrapping="Wrap" />
+                        TextAlignment="Center" />
                     <Button
                         x:Name="ClearSearchButton"
+                        Margin="0,8,0,0"
                         HorizontalAlignment="Center"
                         Click="ClearSearchButton_Click"
                         Content="清除搜索"

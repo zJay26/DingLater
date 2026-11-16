@@ -12,13 +12,23 @@ public enum InboxSection
     Handled
 }
 
+public enum CaptureStatusKind
+{
+    Preparing,
+    Capturing,
+    Waiting,
+    Paused
+}
+
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private readonly InboxService _inbox;
     private readonly StartupService _startup;
     private readonly Action<Action> _dispatch;
+    private readonly TimeProvider _clock;
     private readonly object _refreshSync = new();
     private readonly SemaphoreSlim _settingsGate = new(1, 1);
+    private DateTime _presentationDate;
     private Task? _refreshTask;
     private bool _refreshRequested;
     private volatile bool _disposed;
@@ -31,16 +41,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _startupAvailable;
     private bool _startWithWindows;
     private string _statusText = "正在准备捕获…";
+    private CaptureStatusKind _captureStatus = CaptureStatusKind.Preparing;
+    private string _captureStatusDetail = "正在启动捕获来源。";
+    private string _sectionSummary = string.Empty;
     private ConversationThreadViewModel? _selectedConversation;
     private MessageCardViewModel? _selectedMessage;
     private bool _isSettingsPage;
     private string _alwaysOnTopStatus = "正在准备窗口置顶…";
     private bool _alwaysOnTopHasError;
 
-    public MainViewModel(InboxService inbox, StartupService startup, Action<Action>? dispatch = null)
+    public MainViewModel(
+        InboxService inbox,
+        StartupService startup,
+        Action<Action>? dispatch = null,
+        TimeProvider? clock = null)
     {
         _inbox = inbox;
         _startup = startup;
+        _clock = clock ?? TimeProvider.System;
         var dispatcher = dispatch ?? (action => action());
         _dispatch = action => dispatcher(() =>
         {
@@ -125,6 +143,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _statusText;
         private set => SetProperty(ref _statusText, value);
+    }
+
+    public CaptureStatusKind CaptureStatus
+    {
+        get => _captureStatus;
+        private set => SetProperty(ref _captureStatus, value);
+    }
+
+    /// <summary>One sentence explaining the capture state, suitable for a tooltip or status flyout.</summary>
+    public string CaptureStatusDetail
+    {
+        get => _captureStatusDetail;
+        private set => SetProperty(ref _captureStatusDetail, value);
+    }
+
+    /// <summary>Counts for the visible section, for example "3 个会话 · 5 条消息".</summary>
+    public string SectionSummary
+    {
+        get => _sectionSummary;
+        private set => SetProperty(ref _sectionSummary, value);
     }
 
     public bool StartupAvailable
@@ -228,6 +266,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     ErrorOccurred?.Invoke(this, $"刷新失败：{exception.Message}");
                 });
             }
+        }
+    }
+
+    /// <summary>
+    /// Relative labels such as "16:41" or "明天 09:00" depend on the local date; rebuild them once the day changes
+    /// even when no message changed. Cheap to call from a periodic timer.
+    /// </summary>
+    public void RefreshIfDayChanged()
+    {
+        if (_presentationDate != default && _clock.GetLocalNow().Date != _presentationDate)
+        {
+            _ = RefreshAsync();
         }
     }
 
@@ -539,15 +589,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RebuildThreads()
     {
-        var previous = _threads.SelectMany(section => section.Value.Select(thread =>
-                new KeyValuePair<(InboxState, string), ConversationThreadViewModel>((section.Key, thread.Key), thread)))
-            .ToDictionary();
+        var now = _clock.GetLocalNow();
+        // Reusing unchanged threads keeps selection stable, but their relative time labels expire at midnight.
+        var previous = now.Date == _presentationDate
+            ? _threads.SelectMany(section => section.Value.Select(thread =>
+                    new KeyValuePair<(InboxState, string), ConversationThreadViewModel>((section.Key, thread.Key), thread)))
+                .ToDictionary()
+            : [];
+        _presentationDate = now.Date;
         _threads = _allMessages.GroupBy(message => message.State).ToDictionary(
             section => section.Key,
             section => section.GroupBy(ConversationPresentation.GetKey, StringComparer.Ordinal)
                 .Select(group => previous.TryGetValue((section.Key, group.Key), out var thread) && thread.HasSameMessages(group)
                     ? thread
-                    : new ConversationThreadViewModel(group))
+                    : new ConversationThreadViewModel(group, now))
                 .OrderBy(thread => section.Key == InboxState.Snoozed ? thread.NextReminderAt : DateTimeOffset.MinValue)
                 .ThenByDescending(thread => thread.LatestAt)
                 .ThenBy(thread => thread.Key, StringComparer.Ordinal)
@@ -619,6 +674,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
               ?? selected?.Messages.FirstOrDefault();
         SetProperty(ref _selectedConversation, selected, nameof(SelectedConversation));
         SetProperty(ref _selectedMessage, selectedMessage, nameof(SelectedMessage));
+        var messageCount = threads.Sum(thread => thread.MessageCount);
+        SectionSummary = threads.Count == 0
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(SearchText)
+                ? $"{threads.Count} 个会话 · {messageCount} 条消息"
+                : $"找到 {threads.Count} 个会话 · {messageCount} 条消息";
 
         OnPropertyChanged(nameof(IsEmpty));
     }
@@ -632,12 +693,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             HealthSources.Add(new CaptureHealthViewModel(item));
         }
 
-        StatusText = CapturePaused
-            ? "捕获已暂停"
-            : list.Any(item => item.State == CaptureHealthState.Healthy)
-                ? "捕获中"
-                : "等待钉钉";
+        var healthy = list.FirstOrDefault(item => item.State == CaptureHealthState.Healthy);
+        CaptureStatus = CapturePaused
+            ? CaptureStatusKind.Paused
+            : healthy is not null
+                ? CaptureStatusKind.Capturing
+                : CaptureStatusKind.Waiting;
+        StatusText = CaptureStatus switch
+        {
+            CaptureStatusKind.Paused => "捕获已暂停",
+            CaptureStatusKind.Capturing => "捕获中",
+            _ => "等待钉钉"
+        };
+        CaptureStatusDetail = CaptureStatus switch
+        {
+            CaptureStatusKind.Paused => "新消息不会进入待处理；已保存的消息和稍后提醒不受影响。",
+            CaptureStatusKind.Capturing => NonEmpty(healthy?.Detail, "正在只读读取钉钉的新消息。"),
+            _ => NonEmpty(list.FirstOrDefault()?.Detail, "请确认钉钉已登录并在本机运行。")
+        };
     }
+
+    private static string NonEmpty(string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     private void OnInboxChanged(object? sender, EventArgs args) =>
         _dispatch(() => _ = RefreshAsync());

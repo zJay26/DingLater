@@ -6,16 +6,31 @@
         <ContentControl
             x:Name="ContentHost"
             HorizontalContentAlignment="Stretch"
-            VerticalContentAlignment="Stretch">
-            <Grid>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
-                    <ProgressRing Width="36" Height="36" IsActive="True" />
-                    <TextBlock
-                        Style="{StaticResource DingBodyTextStyle}"
-                        Text="正在启动 DingLater"
-                        TextAlignment="Center" />
-                </StackPanel>
-            </Grid>
+            VerticalContentAlignment="Stretch"
+            IsTabStop="False">
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="16">
+                <Image
+                    Width="64"
+                    Height="64"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AccessibilityView="Raw">
+                    <Image.Source>
+                        <SvgImageSource UriSource="ms-appx:///Assets/DingLaterMark.svg" />
+                    </Image.Source>
+                </Image>
+                <ProgressRing
+                    Width="24"
+                    Height="24"
+                    IsActive="True" />
+                <TextBlock
+                    AutomationProperties.LiveSetting="Polite"
+                    Style="{StaticResource DingSecondaryTextStyle}"
+                    Text="正在启动 DingLater…"
+                    TextAlignment="Center" />
+            </StackPanel>
         </ContentControl>
     </Grid>
 </Window>

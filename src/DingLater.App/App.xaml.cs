@@ -39,6 +39,13 @@ public partial class App : Application
 
     public App()
     {
+#if DEBUG
+        // UI verification aid for Debug builds only: DINGLATER_THEME=Light|Dark forces the app theme.
+        if (Enum.TryParse<ApplicationTheme>(Environment.GetEnvironmentVariable("DINGLATER_THEME"), ignoreCase: true, out var theme))
+        {
+            RequestedTheme = theme;
+        }
+#endif
         InitializeComponent();
         UnhandledException += App_UnhandledException;
     }
@@ -215,6 +222,7 @@ public partial class App : Application
             _maintenanceTimer.Interval = TimeSpan.FromMinutes(1);
             _maintenanceTimer.Tick += async (_, _) =>
             {
+                _viewModel.RefreshIfDayChanged();
                 await _inbox.RunMaintenanceAsync();
                 if (!demoMode && _updates is not null)
                 {
@@ -495,17 +503,22 @@ public partial class App : Application
         await _inbox.SaveSettingsAsync(_inbox.Settings with { AlwaysOnTopEnabled = IsTopmostSmokeTest() }, applyRetention: false);
         if (IsTopmostSmokeTest()) _mainWindow.Title = "DingLater · 窗口置顶测试（合成数据）";
         var now = DateTimeOffset.Now;
-        foreach (var state in new[] { InboxState.Inbox, InboxState.Snoozed, InboxState.Handled }.Where(state => !traySmoke || state != InboxState.Inbox))
+        if (!traySmoke)
         {
-            var result = await store.AddAsync(new CapturedMessage(
-                CaptureSourceKind.Synthetic, now, "示例项目群", "示例联系人",
-                "这是一条合成测试消息，用于验证便携版界面、搜索和提醒显示。", MessageKind.Normal, 1, "package-smoke",
-                SourceIdentity: state.ToString(), ConversationScope: ConversationScope.Group), 7);
-            await store.UpdateStateAsync(result.Message.Id, state, state == InboxState.Snoozed ? now.AddMinutes(30) : null, now);
+            // A realistic, entirely fictional inbox that exercises every message template.
+            await InterfacePreviewData.SeedAsync(store, now);
         }
-
-        if (traySmoke)
+        else
         {
+            foreach (var state in new[] { InboxState.Snoozed, InboxState.Handled })
+            {
+                var result = await store.AddAsync(new CapturedMessage(
+                    CaptureSourceKind.Synthetic, now, "示例项目群", "示例联系人",
+                    "这是一条合成测试消息，用于验证便携版界面、搜索和提醒显示。", MessageKind.Normal, 1, "package-smoke",
+                    SourceIdentity: state.ToString(), ConversationScope: ConversationScope.Group), 7);
+                await store.UpdateStateAsync(result.Message.Id, state, state == InboxState.Snoozed ? now.AddMinutes(30) : null, now);
+            }
+
             var people = new[]
             {
                 (Name: "张晓", Count: 4, Body: "明天下午三点方便一起过一下方案吗？"),
@@ -528,6 +541,8 @@ public partial class App : Application
         }
 
         _viewModel = new MainViewModel(_inbox, new StartupService(), action => _mainWindow.Dispatch(action));
+        // Interactive smoke runs are documented for checking every font scale, so apply scale changes here too.
+        _viewModel.FontScaleChanged += ViewModel_FontScaleChanged;
         await _viewModel.RefreshAsync();
         CreateUpdateViewModel();
         RebuildShell();

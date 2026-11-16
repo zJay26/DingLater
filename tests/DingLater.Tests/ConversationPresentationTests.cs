@@ -66,6 +66,82 @@ public sealed class ConversationPresentationTests
         Assert.AreEqual($"提醒时间：{dueAt.LocalDateTime:yyyy年M月d日 HH:mm}", card.SnoozedUntilText);
     }
 
+    [TestMethod]
+    public void Thread_ExposesAvatarScopeCountAndSingleLinePreview()
+    {
+        var now = DateTimeOffset.Parse("2026-08-04T16:00:00+08:00");
+        var direct = new ConversationThreadViewModel(
+            [Stored("460140151", "  毛俊翔", "第一行\r\n第二行   第三行", ConversationScope.Direct, now)], now);
+        var group = new ConversationThreadViewModel([
+            Stored("研发协作群", "周远", "A", ConversationScope.Group, now),
+            Stored("研发协作群", "小林", "B", ConversationScope.Group, now.AddMinutes(-1))], now);
+
+        Assert.AreEqual("毛", direct.AvatarText);
+        Assert.IsTrue(direct.IsDirect);
+        Assert.AreEqual("私聊 · 1 条消息", direct.ScopeText);
+        Assert.AreEqual("第一行 第二行 第三行", direct.Subtitle);
+        Assert.IsFalse(direct.HasCount);
+        Assert.AreEqual(string.Empty, direct.CountText);
+        Assert.IsTrue(group.IsGroup);
+        Assert.AreEqual("群聊 · 2 条消息", group.ScopeText);
+        Assert.AreEqual("2", group.CountText);
+    }
+
+    [TestMethod]
+    public void Thread_DingOutranksMention()
+    {
+        var mention = Stored("项目群", "甲", "@我", ConversationScope.Group) with
+        {
+            Captured = Stored("项目群", "甲", "@我", ConversationScope.Group).Captured with { Kind = MessageKind.Mention }
+        };
+        var ding = Stored("项目群", "乙", "DING", ConversationScope.Group) with
+        {
+            Captured = Stored("项目群", "乙", "DING", ConversationScope.Group).Captured with { Kind = MessageKind.Ding }
+        };
+
+        var mentionOnly = new ConversationThreadViewModel([mention]);
+        var both = new ConversationThreadViewModel([mention, ding]);
+
+        Assert.IsTrue(mentionOnly.HasMention);
+        Assert.IsFalse(mentionOnly.HasDing);
+        Assert.IsTrue(both.HasDing);
+        Assert.IsFalse(both.HasMention);
+    }
+
+    [TestMethod]
+    public void EmptyBody_ShowsPlaceholderButCopiesNothing()
+    {
+        var message = Stored("项目群", "甲", "  ", ConversationScope.Group);
+
+        var card = new MessageCardViewModel(message);
+        var thread = new ConversationThreadViewModel([message]);
+
+        Assert.AreEqual("[非文字消息]", card.Body);
+        Assert.IsFalse(card.CanCopy);
+        Assert.AreEqual("甲：[非文字消息]", thread.Subtitle);
+    }
+
+    [TestMethod]
+    public void ListItems_DescribeThemselvesForScreenReaders()
+    {
+        var now = DateTimeOffset.Parse("2026-08-04T16:00:00+08:00");
+        var message = Stored("研发协作群", "周远", "日志已定位", ConversationScope.Group, now) with
+        {
+            Captured = Stored("研发协作群", "周远", "日志已定位", ConversationScope.Group, now).Captured with { Kind = MessageKind.Mention }
+        };
+
+        var thread = new ConversationThreadViewModel([message], now);
+        var card = thread.Messages.Single();
+
+        StringAssert.StartsWith(thread.ToString(), "研发协作群，群聊，1 条消息");
+        StringAssert.Contains(thread.ToString(), "有人提到我");
+        StringAssert.Contains(card.ToString(), "周远");
+        StringAssert.Contains(card.ToString(), "提到我");
+        StringAssert.Contains(card.ToString(), "日志已定位");
+        Assert.IsFalse(thread.ToString().Contains(nameof(ConversationThreadViewModel), StringComparison.Ordinal));
+        Assert.IsFalse(card.ToString().Contains(nameof(MessageCardViewModel), StringComparison.Ordinal));
+    }
+
     private static StoredMessage Stored(
         string conversation,
         string sender,
