@@ -1,8 +1,11 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using DingLater.App.ViewModels;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace DingLater.App.Views;
 
@@ -21,12 +24,12 @@ public sealed partial class ShellPage : Page
         DataContext = viewModel;
         _inboxPage = new InboxPage(viewModel);
         _settingsPage = new SettingsPage(viewModel, updates);
-        _updates.PropertyChanged += Updates_PropertyChanged;
-        _viewModel.ErrorOccurred += ViewModel_ErrorOccurred;
-        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        Unloaded += ShellPage_Unloaded;
         Loaded += ShellPage_Loaded;
+        Unloaded += ShellPage_Unloaded;
+        SizeChanged += (_, _) => UpdateBannerInsets();
     }
+
+    internal MainViewModel ViewModel => _viewModel;
 
     internal void OpenMessage(Guid id)
     {
@@ -46,8 +49,20 @@ public sealed partial class ShellPage : Page
         PageHost.Content = _inboxPage;
     }
 
+    internal void OpenSettings()
+    {
+        Navigation.SelectedItem = Navigation.SettingsItem;
+        _settingsPage.ShowUpdates();
+    }
+
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
+        _updates.PropertyChanged += Updates_PropertyChanged;
+        _viewModel.ErrorOccurred += ViewModel_ErrorOccurred;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        _viewModel.HealthSources.CollectionChanged += HealthSources_CollectionChanged;
+        RefreshHealthList();
+        UpdateBannerInsets();
         RefreshUpdateNotice();
         RefreshCaptureStatus();
         RefreshNavigationCounts();
@@ -63,6 +78,19 @@ public sealed partial class ShellPage : Page
         PageHost.Content = _inboxPage;
         _inboxPage.RefreshFromViewModel();
     }
+
+    private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _updates.PropertyChanged -= Updates_PropertyChanged;
+        _viewModel.ErrorOccurred -= ViewModel_ErrorOccurred;
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        _viewModel.HealthSources.CollectionChanged -= HealthSources_CollectionChanged;
+    }
+
+    private void HealthSources_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshHealthList();
+
+    private void RefreshHealthList() =>
+        HealthList.Visibility = _viewModel.HealthSources.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
@@ -90,6 +118,17 @@ public sealed partial class ShellPage : Page
         _inboxPage.RefreshFromViewModel();
     }
 
+    private void SectionAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        Navigation.SelectedItem = sender.Key switch
+        {
+            VirtualKey.Number2 => SnoozedItem,
+            VirtualKey.Number3 => HandledItem,
+            _ => InboxItem
+        };
+        args.Handled = true;
+    }
+
     private NavigationViewItem ItemForSection(InboxSection section) => section switch
     {
         InboxSection.Snoozed => SnoozedItem,
@@ -100,19 +139,28 @@ public sealed partial class ShellPage : Page
     private void ViewModel_ErrorOccurred(object? sender, string message)
     {
         ErrorInfoBar.Message = message;
-        ErrorInfoBar.IsOpen = true;
+        SetBanner(ErrorInfoBar, true);
     }
 
     private async void CaptureToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        CaptureToggleButton.IsEnabled = false;
+        CaptureFlyout.Hide();
+        if (sender is Control control)
+        {
+            control.IsEnabled = false;
+        }
+
         try
         {
             await _viewModel.ToggleCaptureAsync();
         }
         finally
         {
-            CaptureToggleButton.IsEnabled = true;
+            if (sender is Control finished)
+            {
+                finished.IsEnabled = true;
+            }
+
             RefreshCaptureStatus();
         }
     }
@@ -121,6 +169,8 @@ public sealed partial class ShellPage : Page
     {
         if (e.PropertyName is nameof(MainViewModel.CapturePaused)
             or nameof(MainViewModel.CaptureActionText)
+            or nameof(MainViewModel.CaptureStatus)
+            or nameof(MainViewModel.CaptureStatusDetail)
             or nameof(MainViewModel.StatusText))
         {
             RefreshCaptureStatus();
@@ -136,18 +186,23 @@ public sealed partial class ShellPage : Page
 
     private void RefreshCaptureStatus()
     {
-        CaptureStatusText.Text = _viewModel.StatusText;
-        CaptureToggleButton.Content = _viewModel.CaptureActionText;
-        CaptureToggleButton.Style = (Style)Application.Current.Resources[
-            _viewModel.CapturePaused ? "DingPrimaryButtonStyle" : "DingQuietButtonStyle"];
-        CaptureStatusPanel.Background = (Brush)Application.Current.Resources[
-            _viewModel.CapturePaused ? "DingAccentSoftBrush" : "DingSurfaceBrush"];
-        var statusBrush = _viewModel.CapturePaused
-            ? "DingAccentBrush"
-            : _viewModel.StatusText == "捕获中"
-                ? "DingSuccessBrush"
-                : "DingSecondaryTextBrush";
-        CaptureStatusDot.Background = (Brush)Application.Current.Resources[statusBrush];
+        var paused = _viewModel.CapturePaused;
+        var state = paused
+            ? CaptureStatusKind.Paused
+            : _viewModel.CaptureStatus;
+        VisualStateManager.GoToState(this, state switch
+        {
+            CaptureStatusKind.Capturing => "CaptureCapturing",
+            CaptureStatusKind.Waiting => "CaptureWaiting",
+            CaptureStatusKind.Paused => "CapturePaused",
+            _ => "CapturePreparing"
+        }, false);
+        CaptureStatusText.Text = paused ? "捕获已暂停" : _viewModel.StatusText;
+        CaptureDetailText.Text = _viewModel.CaptureStatusDetail;
+        CaptureToggleLabel.Text = _viewModel.CaptureActionText;
+        ToolTipService.SetToolTip(CaptureStatusButton, _viewModel.CaptureStatusDetail);
+        AutomationProperties.SetName(CaptureStatusButton, $"消息捕获：{CaptureStatusText.Text}");
+        SetBanner(PausedInfoBar, paused);
     }
 
     private void RefreshNavigationCounts()
@@ -157,13 +212,9 @@ public sealed partial class ShellPage : Page
         SnoozedCountText.Visibility = _viewModel.SnoozedCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         HandledCountText.Text = _viewModel.HandledCount.ToString();
         HandledCountText.Visibility = _viewModel.HandledCount > 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        _updates.PropertyChanged -= Updates_PropertyChanged;
-        _viewModel.ErrorOccurred -= ViewModel_ErrorOccurred;
-        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        AutomationProperties.SetItemStatus(InboxItem, $"{_viewModel.InboxCount} 条");
+        AutomationProperties.SetItemStatus(SnoozedItem, $"{_viewModel.SnoozedCount} 条");
+        AutomationProperties.SetItemStatus(HandledItem, $"{_viewModel.HandledCount} 条");
     }
 
     private void Updates_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RefreshUpdateNotice();
@@ -171,17 +222,30 @@ public sealed partial class ShellPage : Page
     private void RefreshUpdateNotice()
     {
         UpdateInfoBar.Title = _updates.AvailableVersionText;
-        UpdateInfoBar.IsOpen = _updates.ShowNotice;
+        SetBanner(UpdateInfoBar, _updates.ShowNotice);
     }
 
-    private void UpdateInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args) => _updates.DismissNotice();
-
-    private void ViewUpdateButton_Click(object sender, RoutedEventArgs e)
-        => OpenSettings();
-
-    internal void OpenSettings()
+    private void UpdateInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
     {
-        Navigation.SelectedItem = Navigation.SettingsItem;
-        _settingsPage.ShowUpdates();
+        sender.Visibility = Visibility.Collapsed;
+        _updates.DismissNotice();
+    }
+
+    private void Banner_Closed(InfoBar sender, InfoBarClosedEventArgs args) => sender.Visibility = Visibility.Collapsed;
+
+    private void ViewUpdateButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    /// <summary>Closed InfoBars still reserve their margins, so collapse them as well.</summary>
+    private static void SetBanner(InfoBar banner, bool open)
+    {
+        banner.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        banner.IsOpen = open;
+    }
+
+    private void UpdateBannerInsets()
+    {
+        var size = XamlRoot?.Size ?? new Windows.Foundation.Size(ActualWidth, ActualHeight);
+        var padding = AdaptiveLayout.PagePadding(size.Width, size.Height);
+        BannerHost.Padding = new Thickness(padding.Left, 0, padding.Right, 0);
     }
 }

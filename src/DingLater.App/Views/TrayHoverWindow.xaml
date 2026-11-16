@@ -53,11 +53,11 @@
                                         <ColumnDefinition Width="40" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="40" Height="40" CornerRadius="8" VerticalAlignment="Center"
+                                    <Border Width="40" Height="40" CornerRadius="20" VerticalAlignment="Center"
                                         Background="{ThemeResource DingAccentSoftBrush}">
-                                        <TextBlock Text="{x:Bind AvatarText}" FontSize="19" FontWeight="SemiBold"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            Foreground="{ThemeResource DingAccentBrush}" />
+                                        <TextBlock Text="{x:Bind AvatarText}" FontSize="17" FontWeight="SemiBold"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" IsTextScaleFactorEnabled="False"
+                                            Foreground="{ThemeResource DingAccentTextBrush}" />
                                     </Border>
                                     <Grid Grid.Column="1" RowSpacing="5">
                                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -69,9 +69,9 @@
                                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                                 <TextBlock Text="{x:Bind Name}" MaxWidth="136" FontSize="14" FontWeight="SemiBold"
                                                     TextTrimming="CharacterEllipsis" Foreground="{ThemeResource DingTextBrush}" />
-                                                <Border Background="{ThemeResource DingAccentSoftBrush}" CornerRadius="9" Padding="6,1" MinWidth="22">
+                                                <Border Background="{ThemeResource DingAccentSoftBrush}" CornerRadius="4" Padding="6,0,6,1" MinWidth="20">
                                                     <TextBlock Text="{x:Bind CountText}" FontSize="11" FontWeight="SemiBold"
-                                                        HorizontalAlignment="Center" Foreground="{ThemeResource DingAccentBrush}" />
+                                                        HorizontalAlignment="Center" Foreground="{ThemeResource DingAccentTextBrush}" />
                                                 </Border>
                                             </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{x:Bind TimeText}" FontSize="11" VerticalAlignment="Center"
@@ -99,10 +99,8 @@
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <HyperlinkButton Content="查看全部" Padding="0" FontSize="13" HorizontalAlignment="Left"
-                        Foreground="{ThemeResource DingAccentBrush}"
                         VerticalAlignment="Center" Click="OpenInbox_Click" AutomationProperties.AutomationId="TrayOpenInbox" />
                     <Button x:Name="MarkAllButton" Grid.Column="1" MinHeight="32" Padding="12,6"
-                        Background="{ThemeResource DingAccentBrush}" Foreground="{ThemeResource DingAccentForegroundBrush}"
                         Style="{StaticResource AccentButtonStyle}" Click="MarkAllButton_Click"
                         AutomationProperties.AutomationId="TrayMarkAllHandled" AutomationProperties.Name="将全部待处理消息标为已处理">
                         <StackPanel Orientation="Horizontal" Spacing="6">

@@ -1,4 +1,3 @@
-using System.Globalization;
 using DingLater.App.ViewModels;
 using DingLater.Core.Models;
 
@@ -12,7 +11,10 @@ internal sealed record TrayInboxPresentation(
 
 internal static class TrayInboxPresentationBuilder
 {
-    internal static TrayInboxPresentation Build(IEnumerable<StoredMessage> messages, bool includePreview)
+    internal static TrayInboxPresentation Build(
+        IEnumerable<StoredMessage> messages,
+        bool includePreview,
+        DateTimeOffset? now = null)
     {
         var pending = messages.Where(message => message.State == InboxState.Inbox)
             .OrderByDescending(ConversationPresentation.GetMessageTime)
@@ -23,23 +25,20 @@ internal static class TrayInboxPresentationBuilder
             return new TrayInboxPresentation(pending.Length, pending.FirstOrDefault(), [], false);
         }
 
-        var today = DateTime.Today;
+        var clock = now ?? DateTimeOffset.Now;
         var contacts = pending.GroupBy(GetPersonKey, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var latest = group.First();
-                var name = Clean(latest.Captured.Sender);
+                var name = PresentationText.SingleLine(latest.Captured.Sender);
                 if (name.Length == 0) name = "未知发送者";
-                var body = Clean(latest.Captured.VisibleBody);
-                if (body.Length == 0) body = "[非文字消息]";
-                var time = ConversationPresentation.GetMessageTime(latest).LocalDateTime;
                 return new TrayContactViewModel(
                     group.Key,
                     name,
-                    StringInfo.GetNextTextElement(name),
+                    PresentationText.Initial(name),
                     group.Count(),
-                    body,
-                    time.ToString(time.Date == today ? "HH:mm" : "M/d HH:mm", CultureInfo.CurrentCulture),
+                    PresentationText.Preview(latest.Captured.VisibleBody),
+                    DisplayTimeFormatter.Compact(ConversationPresentation.GetMessageTime(latest), clock),
                     latest.Id);
             }).ToArray();
         return new TrayInboxPresentation(pending.Length, pending.FirstOrDefault(), contacts, true);
@@ -47,12 +46,9 @@ internal static class TrayInboxPresentationBuilder
 
     private static string GetPersonKey(StoredMessage message)
     {
-        var sender = Clean(message.Captured.Sender);
+        var sender = PresentationText.SingleLine(message.Captured.Sender);
         return sender.Length > 0 && !string.Equals(sender, "未知发送者", StringComparison.Ordinal)
             ? $"sender:{sender}"
             : $"unknown:{ConversationPresentation.GetKey(message)}";
     }
-
-    private static string Clean(string value) =>
-        string.Join(' ', value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).Trim();
 }

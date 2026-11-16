@@ -6,30 +6,60 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <!--
+                        Brand accent ramp derived from the app mark (#6576C9). WinUI builds every accent surface
+                        (accent buttons, selection indicators, toggles, badges, links, progress) from these keys,
+                        so the system accent no longer clashes with the brand. High Contrast keeps system colors.
+                        Dark1 keeps white text >= 4.5:1 even in the 90% hover state.
+                    -->
+                    <Color x:Key="SystemAccentColor">#6576C9</Color>
+                    <Color x:Key="SystemAccentColorLight1">#7F8DD6</Color>
+                    <Color x:Key="SystemAccentColorLight2">#A3ADE6</Color>
+                    <Color x:Key="SystemAccentColorLight3">#C6CCF2</Color>
+                    <Color x:Key="SystemAccentColorDark1">#4F5FB5</Color>
+                    <Color x:Key="SystemAccentColorDark2">#43509C</Color>
+                    <Color x:Key="SystemAccentColorDark3">#343E7A</Color>
+
                     <SolidColorBrush x:Key="DingPageBackgroundBrush" Color="#F3F5F9" />
                     <SolidColorBrush x:Key="DingSurfaceBrush" Color="#FCFCFD" />
                     <SolidColorBrush x:Key="DingSurfaceRaisedBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="DingTextBrush" Color="#1F2633" />
-                    <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="#657184" />
-                    <SolidColorBrush x:Key="DingAccentBrush" Color="#5B68BC" />
+                    <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="#5D6878" />
+                    <SolidColorBrush x:Key="DingAccentBrush" Color="#4F5FB5" />
+                    <SolidColorBrush x:Key="DingAccentTextBrush" Color="#43509C" />
                     <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="White" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="#E9EBF8" />
-                    <SolidColorBrush x:Key="DingSuccessBrush" Color="#3B7A63" />
+                    <SolidColorBrush x:Key="DingNeutralSoftBrush" Color="#EEF0F4" />
+                    <SolidColorBrush x:Key="DingSuccessBrush" Color="#2F7A5B" />
+                    <SolidColorBrush x:Key="DingWarningBrush" Color="#9D5D00" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="#DDE2EA" />
                     <SolidColorBrush x:Key="DingDangerBrush" Color="#A33D4F" />
+                    <SolidColorBrush x:Key="DingDangerSoftBrush" Color="#FBEAEC" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="SystemAccentColor">#6576C9</Color>
+                    <Color x:Key="SystemAccentColorLight1">#7F8DD6</Color>
+                    <Color x:Key="SystemAccentColorLight2">#A3ADE6</Color>
+                    <Color x:Key="SystemAccentColorLight3">#C6CCF2</Color>
+                    <Color x:Key="SystemAccentColorDark1">#4F5FB5</Color>
+                    <Color x:Key="SystemAccentColorDark2">#43509C</Color>
+                    <Color x:Key="SystemAccentColorDark3">#343E7A</Color>
+
                     <SolidColorBrush x:Key="DingPageBackgroundBrush" Color="#17191E" />
                     <SolidColorBrush x:Key="DingSurfaceBrush" Color="#20232A" />
                     <SolidColorBrush x:Key="DingSurfaceRaisedBrush" Color="#282C34" />
                     <SolidColorBrush x:Key="DingTextBrush" Color="#F2F4F8" />
                     <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="#AAB2C1" />
-                    <SolidColorBrush x:Key="DingAccentBrush" Color="#AEB7FF" />
+                    <SolidColorBrush x:Key="DingAccentBrush" Color="#A3ADE6" />
+                    <SolidColorBrush x:Key="DingAccentTextBrush" Color="#C6CCF2" />
                     <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="Black" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="#30364F" />
+                    <SolidColorBrush x:Key="DingNeutralSoftBrush" Color="#30343C" />
                     <SolidColorBrush x:Key="DingSuccessBrush" Color="#83C5A7" />
+                    <SolidColorBrush x:Key="DingWarningBrush" Color="#F2C661" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="#3A3F48" />
                     <SolidColorBrush x:Key="DingDangerBrush" Color="#FF9AA9" />
+                    <SolidColorBrush x:Key="DingDangerSoftBrush" Color="#4A2A31" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="DingPageBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -38,36 +68,103 @@
                     <SolidColorBrush x:Key="DingTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DingAccentTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingAccentForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
                     <SolidColorBrush x:Key="DingAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="DingNeutralSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="DingSuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="DingWarningBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="DingDangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="DingDangerSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="ms-appx:///Styles/Typography.Standard.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <FontFamily x:Key="DingTextFontFamily">Segoe UI Variable Text</FontFamily>
+            <CornerRadius x:Key="DingPaneCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="DingChipCornerRadius">4</CornerRadius>
+
             <Style x:Key="DingSurfaceBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource DingSurfaceBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource DingDividerBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="CornerRadius" Value="{StaticResource DingPaneCornerRadius}" />
             </Style>
-            <Style x:Key="DingQuietButtonStyle" TargetType="Button">
-                <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
+
+            <!-- Buttons keep WinUI's 4px control radius so they line up with text boxes and split buttons. -->
+            <Style x:Key="DingQuietButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
                 <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
                 <Setter Property="MinHeight" Value="{ThemeResource DingControlHeight}" />
                 <Setter Property="Padding" Value="{ThemeResource DingControlPadding}" />
-                <Setter Property="CornerRadius" Value="6" />
             </Style>
             <Style x:Key="DingPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
-                <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
+                <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
                 <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
                 <Setter Property="MinHeight" Value="{ThemeResource DingControlHeight}" />
                 <Setter Property="Padding" Value="{ThemeResource DingControlPadding}" />
-                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <Style x:Key="DingSubtleButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
+                <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
+                <Setter Property="MinHeight" Value="{ThemeResource DingControlHeight}" />
+                <Setter Property="Padding" Value="{ThemeResource DingControlPadding}" />
+            </Style>
+            <!-- Square, borderless icon button; give every instance an AutomationProperties.Name. -->
+            <Style x:Key="DingIconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="Width" Value="{ThemeResource DingIconButtonSize}" />
+                <Setter Property="Height" Value="{ThemeResource DingIconButtonSize}" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource DingSecondaryTextBrush}" />
+            </Style>
+
+            <!-- Small rounded label for counts and message kinds. -->
+            <Style x:Key="DingChipStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource DingAccentSoftBrush}" />
+                <Setter Property="CornerRadius" Value="{StaticResource DingChipCornerRadius}" />
+                <Setter Property="Padding" Value="6,0,6,1" />
+                <Setter Property="MinWidth" Value="20" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="DingChipTextStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
+                <Setter Property="FontSize" Value="{ThemeResource DingCaptionFontSize}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource DingAccentTextBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
+            </Style>
+
+            <!-- Circular initial or glyph identifying a conversation; matches the tray flyout rows. -->
+            <Style x:Key="DingAvatarStyle" TargetType="Border">
+                <Setter Property="Width" Value="{ThemeResource DingAvatarSize}" />
+                <Setter Property="Height" Value="{ThemeResource DingAvatarSize}" />
+                <Setter Property="CornerRadius" Value="{ThemeResource DingAvatarCornerRadius}" />
+                <Setter Property="Background" Value="{ThemeResource DingAccentSoftBrush}" />
+                <Setter Property="VerticalAlignment" Value="Top" />
+            </Style>
+            <Style x:Key="DingAvatarTextStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
+                <Setter Property="FontSize" Value="{ThemeResource DingAvatarFontSize}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource DingAccentTextBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="IsTextScaleFactorEnabled" Value="False" />
+            </Style>
+
+            <Style x:Key="DingStatusDotStyle" TargetType="Ellipse">
+                <Setter Property="Width" Value="8" />
+                <Setter Property="Height" Value="8" />
+                <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

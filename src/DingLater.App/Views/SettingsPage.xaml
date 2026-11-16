@@ -8,14 +8,23 @@
     VerticalContentAlignment="Stretch">
     <Page.Resources>
         <Style TargetType="controls:SettingsCard">
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
+            <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
             <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
         </Style>
         <Style TargetType="controls:SettingsExpander">
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text" />
+            <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
             <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style TargetType="ToggleSwitch">
+            <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
+        </Style>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
+            <Setter Property="FontFamily" Value="{StaticResource DingTextFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource DingBodyFontSize}" />
+            <Setter Property="MinWidth" Value="200" />
         </Style>
     </Page.Resources>
     <ScrollViewer
@@ -30,204 +39,294 @@
             MaxWidth="960"
             Padding="{StaticResource DingPagePadding}"
             HorizontalAlignment="Center">
-            <StackPanel HorizontalAlignment="Stretch" Spacing="14">
-                <StackPanel Spacing="3">
-                    <TextBlock Style="{StaticResource DingPageTitleStyle}" Text="设置" />
-                    <TextBlock Style="{StaticResource DingSecondaryTextStyle}" Text="更改会立即保存" />
-                </StackPanel>
+            <StackPanel HorizontalAlignment="Stretch" Spacing="4">
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level1"
+                    Style="{StaticResource DingPageTitleStyle}"
+                    Text="设置" />
+                <TextBlock Style="{StaticResource DingSecondaryTextStyle}" Text="更改会立即保存。" />
 
-                <controls:SettingsExpander x:Name="UpdatesExpander" Header="软件更新" IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
-                        <FontIcon Glyph="&#xE895;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard Header="自动检查更新" Description="运行期间每 6 小时检查 GitHub 正式版本；不会自动下载或重启。">
-                            <ToggleSwitch x:Name="AutoUpdateToggle" AutomationProperties.Name="每 6 小时自动检查更新" Toggled="AutoUpdateToggle_Toggled" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard Header="更新下载目录" ContentAlignment="Vertical">
-                            <StackPanel Spacing="8">
-                                <TextBlock x:Name="DownloadDirectoryText" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource DingSecondaryTextStyle}" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button x:Name="ChooseDownloadDirectoryButton" Content="选择文件夹…" Click="ChooseDownloadDirectoryButton_Click" />
-                                    <Button x:Name="ResetDownloadDirectoryButton" Content="恢复默认" Click="ResetDownloadDirectoryButton_Click" />
-                                </StackPanel>
-                            </StackPanel>
-                        </controls:SettingsCard>
-                        <controls:SettingsCard Header="版本与更新" ContentAlignment="Vertical">
-                            <StackPanel Spacing="10">
-                                <TextBlock x:Name="CurrentVersionText" Style="{StaticResource DingBodyTextStyle}" />
-                                <TextBlock x:Name="LastUpdateCheckText" Style="{StaticResource DingSecondaryTextStyle}" />
-                                <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource DingBodyTextStyle}" AutomationProperties.LiveSetting="Polite" />
-                                <ProgressBar x:Name="UpdateProgressBar" Maximum="100" Visibility="Collapsed" AutomationProperties.Name="更新下载进度" />
-                                <StackPanel Spacing="8">
-                                    <Button x:Name="CheckUpdateButton" Content="立即检查" Click="CheckUpdateButton_Click" />
-                                    <HyperlinkButton x:Name="ReleaseNotesLink" Content="查看版本说明" Visibility="Collapsed" />
-                                    <Button x:Name="DownloadUpdateButton" Content="下载更新" Click="DownloadUpdateButton_Click" Visibility="Collapsed" Style="{StaticResource DingPrimaryButtonStyle}" />
-                                    <Button x:Name="InstallUpdateButton" Content="重启并更新…" Click="InstallUpdateButton_Click" Visibility="Collapsed" Style="{StaticResource DingPrimaryButtonStyle}" />
-                                    <Button x:Name="CancelUpdateButton" Content="取消下载" Click="CancelUpdateButton_Click" Visibility="Collapsed" />
-                                    <Button x:Name="SkipUpdateButton" Content="跳过此版本" Click="SkipUpdateButton_Click" Visibility="Collapsed" />
-                                </StackPanel>
-                            </StackPanel>
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="消息捕获" />
+                <controls:SettingsCard Header="群聊收取范围" Description="私聊消息始终收取；“仅 @我”同时包含 @我 和 @所有人。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE716;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ComboBox
+                        x:Name="GroupCaptureModeComboBox"
+                        AutomationProperties.Name="群聊收取范围"
+                        SelectionChanged="GroupCaptureModeComboBox_SelectionChanged" />
+                </controls:SettingsCard>
 
-                <controls:SettingsExpander Header="窗口置顶" IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="通知与启动" />
+                <controls:SettingsCard Header="通知显示消息预览" Description="开启后，提醒通知和托盘列表会显示发送者与正文，锁屏上也可能可见。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE890;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        x:Name="ReminderPreviewToggle"
+                        AutomationProperties.Name="通知显示消息预览"
+                        Toggled="ReminderPreviewToggle_Toggled" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="随 Windows 登录启动" Description="登录后在后台开始捕获，不主动弹出窗口。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE7E8;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        x:Name="StartupToggle"
+                        AutomationProperties.Name="随 Windows 登录启动"
+                        Toggled="StartupToggle_Toggled" />
+                </controls:SettingsCard>
+
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="外观" />
+                <controls:SettingsCard Header="界面字号" Description="同时调整文字、行高与控件间距，并继续遵循 Windows 文字缩放。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8D2;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ComboBox
+                        x:Name="FontScaleComboBox"
+                        AutomationProperties.Name="界面字号"
+                        SelectionChanged="FontScaleComboBox_SelectionChanged" />
+                </controls:SettingsCard>
+
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="窗口置顶" />
+                <controls:SettingsCard Header="启用窗口置顶">
+                    <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE718;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard Header="启用窗口置顶" Description="按 Ctrl + Win + T 置顶当前窗口，再按一次取消。置顶窗口显示描边，不播放音效。">
-                            <ToggleSwitch x:Name="AlwaysOnTopToggle" AutomationProperties.Name="启用窗口置顶" Toggled="AlwaysOnTopToggle_Toggled" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard Header="退出时取消置顶" Description="正常退出 DingLater 时，取消本次由它设置的置顶。关闭功能开关会立即取消这些置顶。">
-                            <ToggleSwitch x:Name="RestoreTopmostToggle" AutomationProperties.Name="退出时取消置顶" Toggled="RestoreTopmostToggle_Toggled" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard Header="快捷键状态" ContentAlignment="Vertical">
-                            <InfoBar x:Name="TopmostInfoBar" IsOpen="True" IsClosable="False" Severity="Informational" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
+                    </controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.Description>
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                Style="{StaticResource DingSecondaryTextStyle}"
+                                Text="按 Ctrl + Win + T 置顶当前窗口，再按一次取消。置顶窗口显示描边，不播放音效。" />
+                            <TextBlock
+                                x:Name="TopmostStatusText"
+                                AutomationProperties.LiveSetting="Polite"
+                                Foreground="{ThemeResource DingAccentTextBrush}"
+                                Style="{StaticResource DingSecondaryTextStyle}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Description>
+                    <ToggleSwitch
+                        x:Name="AlwaysOnTopToggle"
+                        AutomationProperties.Name="启用窗口置顶"
+                        Toggled="AlwaysOnTopToggle_Toggled" />
+                </controls:SettingsCard>
+                <InfoBar
+                    x:Name="TopmostInfoBar"
+                    IsClosable="False"
+                    IsOpen="False"
+                    Severity="Warning"
+                    Title="窗口置顶需要处理"
+                    Visibility="Collapsed" />
+                <controls:SettingsCard Header="退出时取消置顶" Description="正常退出 DingLater 时，取消本次由它设置的置顶。关闭上方开关会立即取消这些置顶。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE7A7;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        x:Name="RestoreTopmostToggle"
+                        AutomationProperties.Name="退出时取消置顶"
+                        Toggled="RestoreTopmostToggle_Toggled" />
+                </controls:SettingsCard>
 
-                <controls:SettingsExpander Header="外观" IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
-                        <FontIcon Glyph="&#xE790;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard
-                            Header="界面字号"
-                            Description="同时调整文字、行高与控件间距。">
-                            <ComboBox
-                                x:Name="FontScaleComboBox"
-                                MinWidth="180"
-                                AutomationProperties.Name="界面字号"
-                                FontFamily="Segoe UI Variable Text"
-                                FontSize="{ThemeResource DingBodyFontSize}"
-                                SelectionChanged="FontScaleComboBox_SelectionChanged" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="存储与隐私" />
+                <controls:SettingsCard Header="消息留存天数" Description="到期后自动删除本地消息并取消对应提醒，可设置 1–365 天。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE81C;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <NumberBox
+                        x:Name="RetentionNumberBox"
+                        Width="160"
+                        AutomationProperties.Name="消息留存天数"
+                        FontFamily="{StaticResource DingTextFontFamily}"
+                        FontSize="{ThemeResource DingBodyFontSize}"
+                        Maximum="365"
+                        Minimum="1"
+                        SmallChange="1"
+                        SpinButtonPlacementMode="Compact"
+                        ValueChanged="RetentionNumberBox_ValueChanged" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="删除全部本地消息" Description="永久删除消息、处理状态和稍后提醒，不影响钉钉中的消息。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE74D;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <Button
+                        AutomationProperties.Name="删除全部本地消息"
+                        Click="DeleteAllButton_Click"
+                        Style="{StaticResource DingQuietButtonStyle}">
+                        <TextBlock Foreground="{ThemeResource DingDangerBrush}" Text="删除全部…" />
+                    </Button>
+                </controls:SettingsCard>
 
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="软件更新" />
+                <controls:SettingsCard x:Name="UpdateCard">
+                    <controls:SettingsCard.HeaderIcon>
+                        <ImageIcon>
+                            <ImageIcon.Source>
+                                <SvgImageSource UriSource="ms-appx:///Assets/DingLaterMark.svg" />
+                            </ImageIcon.Source>
+                        </ImageIcon>
+                    </controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.Header>
+                        <TextBlock x:Name="CurrentVersionText" Style="{StaticResource DingBodyStrongTextStyle}" />
+                    </controls:SettingsCard.Header>
+                    <controls:SettingsCard.Description>
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                x:Name="UpdateStatusText"
+                                AutomationProperties.LiveSetting="Polite"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource DingSecondaryTextStyle}" />
+                            <TextBlock x:Name="LastUpdateCheckText" Style="{StaticResource DingCaptionTextStyle}" />
+                            <ProgressBar
+                                x:Name="UpdateProgressBar"
+                                Margin="0,6,0,2"
+                                AutomationProperties.Name="更新下载进度"
+                                Maximum="100"
+                                Visibility="Collapsed" />
+                            <StackPanel
+                                Margin="-12,0,0,0"
+                                Orientation="Horizontal"
+                                Spacing="4">
+                                <HyperlinkButton x:Name="ReleaseNotesLink" Content="查看版本说明" Visibility="Collapsed" />
+                                <HyperlinkButton
+                                    x:Name="SkipUpdateButton"
+                                    Click="SkipUpdateButton_Click"
+                                    Content="跳过此版本"
+                                    Visibility="Collapsed" />
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsCard.Description>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="CheckUpdateButton"
+                            Click="CheckUpdateButton_Click"
+                            Content="检查更新"
+                            Style="{StaticResource DingQuietButtonStyle}" />
+                        <Button
+                            x:Name="DownloadUpdateButton"
+                            Click="DownloadUpdateButton_Click"
+                            Content="下载更新"
+                            Style="{StaticResource DingPrimaryButtonStyle}"
+                            Visibility="Collapsed" />
+                        <Button
+                            x:Name="InstallUpdateButton"
+                            Click="InstallUpdateButton_Click"
+                            Content="重启并更新…"
+                            Style="{StaticResource DingPrimaryButtonStyle}"
+                            Visibility="Collapsed" />
+                        <Button
+                            x:Name="CancelUpdateButton"
+                            Click="CancelUpdateButton_Click"
+                            Content="取消下载"
+                            Style="{StaticResource DingQuietButtonStyle}"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="自动检查更新" Description="运行期间每 6 小时检查 GitHub 正式版本；不会自动下载或重启。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE895;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        x:Name="AutoUpdateToggle"
+                        AutomationProperties.Name="每 6 小时自动检查更新"
+                        Toggled="AutoUpdateToggle_Toggled" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="更新下载目录">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE896;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.Description>
+                        <TextBlock
+                            x:Name="DownloadDirectoryText"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource DingSecondaryTextStyle}" />
+                    </controls:SettingsCard.Description>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="ChooseDownloadDirectoryButton"
+                            Click="ChooseDownloadDirectoryButton_Click"
+                            Content="选择文件夹…"
+                            Style="{StaticResource DingQuietButtonStyle}" />
+                        <Button
+                            x:Name="ResetDownloadDirectoryButton"
+                            Click="ResetDownloadDirectoryButton_Click"
+                            Content="恢复默认"
+                            Style="{StaticResource DingQuietButtonStyle}" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource DingSettingsGroupHeaderStyle}"
+                    Text="诊断" />
                 <controls:SettingsExpander
-                    Header="消息捕获"
-                    Description="决定哪些群聊消息进入待处理"
-                    IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
-                        <FontIcon Glyph="&#xE8F2;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard
-                            Header="群聊收取范围"
-                            Description="“仅提到我”包含 @我 和 @所有人。">
-                            <ToggleSwitch
-                                x:Name="GroupMessagesToggle"
-                                AutomationProperties.Name="捕获所有群聊消息"
-                                FontFamily="Segoe UI Variable Text"
-                                FontSize="{ThemeResource DingBodyFontSize}"
-                                OffContent="仅提到我"
-                                OnContent="全部消息"
-                                Toggled="GroupMessagesToggle_Toggled" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
-
-                <controls:SettingsExpander Header="提醒与启动" IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
-                        <FontIcon Glyph="&#xE7ED;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard
-                            Header="通知显示消息预览"
-                            Description="开启后，锁屏通知可能显示发送者和正文。">
-                            <ToggleSwitch
-                                x:Name="ReminderPreviewToggle"
-                                AutomationProperties.Name="通知显示消息预览"
-                                FontFamily="Segoe UI Variable Text"
-                                FontSize="{ThemeResource DingBodyFontSize}"
-                                Toggled="ReminderPreviewToggle_Toggled" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard
-                            Header="随 Windows 登录启动"
-                            Description="登录后在后台开始捕获，不主动弹出窗口。">
-                            <ToggleSwitch
-                                x:Name="StartupToggle"
-                                AutomationProperties.Name="随 Windows 登录启动"
-                                FontFamily="Segoe UI Variable Text"
-                                FontSize="{ThemeResource DingBodyFontSize}"
-                                Toggled="StartupToggle_Toggled" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
-
-                <controls:SettingsExpander Header="存储与隐私" IsExpanded="True">
-                    <controls:SettingsExpander.HeaderIcon>
-                        <FontIcon Glyph="&#xE8B7;" />
-                    </controls:SettingsExpander.HeaderIcon>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard
-                            Header="消息留存天数"
-                            Description="到期后自动删除本地消息并取消对应提醒。">
-                            <NumberBox
-                                x:Name="RetentionNumberBox"
-                                Width="160"
-                                AutomationProperties.Name="消息留存天数"
-                                FontFamily="Segoe UI Variable Text"
-                                FontSize="{ThemeResource DingBodyFontSize}"
-                                Maximum="365"
-                                Minimum="1"
-                                SmallChange="1"
-                                SpinButtonPlacementMode="Compact"
-                                ValueChanged="RetentionNumberBox_ValueChanged" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard
-                            Header="删除全部本地消息"
-                            Description="永久删除消息、处理状态和稍后提醒，不影响钉钉。">
-                            <Button
-                                Click="DeleteAllButton_Click"
-                                Content="删除全部…"
-                                Foreground="{ThemeResource DingDangerBrush}"
-                                Style="{StaticResource DingQuietButtonStyle}" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
-
-                <controls:SettingsExpander
-                    Header="诊断"
                     Description="用于排查捕获来源，不包含消息内容"
+                    Header="捕获来源"
                     IsExpanded="False">
                     <controls:SettingsExpander.HeaderIcon>
                         <FontIcon Glyph="&#xE9D9;" />
                     </controls:SettingsExpander.HeaderIcon>
                     <controls:SettingsExpander.Items>
-                        <controls:SettingsCard Header="捕获来源">
+                        <controls:SettingsCard ContentAlignment="Left">
                             <ItemsControl ItemsSource="{Binding HealthSources}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:CaptureHealthViewModel">
-                                        <StackPanel Margin="0,3" Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Style="{StaticResource DingBodyTextStyle}" Text="{x:Bind Name}" />
-                                            <TextBlock Style="{StaticResource DingSecondaryTextStyle}" Text="{x:Bind State}" />
+                                        <StackPanel Margin="0,4" Spacing="2">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Style="{StaticResource DingBodyStrongTextStyle}" Text="{x:Bind Name}" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource DingSecondaryTextStyle}"
+                                                    Text="{x:Bind State}" />
+                                            </StackPanel>
+                                            <TextBlock Style="{StaticResource DingSecondaryTextStyle}" Text="{x:Bind Detail}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </controls:SettingsCard>
-                        <controls:SettingsCard
-                            Header="诊断信息"
-                            Description="复制运行状态与错误代码。">
-                            <Button
-                                Click="CopyDiagnosticsButton_Click"
-                                Content="复制"
-                                Style="{StaticResource DingQuietButtonStyle}" />
-                        </controls:SettingsCard>
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
-
-                <InfoBar
-                    x:Name="CopyInfoBar"
-                    IsClosable="True"
-                    IsOpen="False"
-                    Message="诊断信息已复制，不含消息内容。"
-                    Severity="Success" />
+                <controls:SettingsCard Header="诊断信息" Description="复制运行状态与错误代码，不含消息内容。">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8C8;" />
+                    </controls:SettingsCard.HeaderIcon>
+                    <Button
+                        x:Name="CopyDiagnosticsButton"
+                        AutomationProperties.Name="复制诊断信息"
+                        Click="CopyDiagnosticsButton_Click"
+                        Style="{StaticResource DingQuietButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon
+                                x:Name="CopyDiagnosticsIcon"
+                                VerticalAlignment="Center"
+                                FontSize="14"
+                                Glyph="&#xE8C8;" />
+                            <TextBlock
+                                x:Name="CopyDiagnosticsLabel"
+                                VerticalAlignment="Center"
+                                AutomationProperties.LiveSetting="Polite"
+                                Text="复制" />
+                        </StackPanel>
+                    </Button>
+                </controls:SettingsCard>
             </StackPanel>
         </Grid>
     </ScrollViewer>

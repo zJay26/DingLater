@@ -11,4 +11,7 @@ public sealed record TrayContactViewModel(
 {
     public string CountText => Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
     public string AccessibleText => $"{Name}，{Count} 条待处理，{TimeText}，{Preview}";
+
+    /// <summary>List items are announced through ToString; never expose the record's internal key.</summary>
+    public override string ToString() => AccessibleText;
 }
