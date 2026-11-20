@@ -64,6 +64,8 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path $publishRoot $relativePath) -PathType Leaf)) { throw "Published WinUI resource is missing: $relativePath" }
     }
     Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $publishRoot
+    & (Join-Path $PSScriptRoot 'Copy-ThirdPartyNotices.ps1') -PublishRoot $publishRoot `
+        -AssetsPath (Join-Path $repoRoot 'src\DingLater.App\obj\project.assets.json') -PackagesRoot $env:NUGET_PACKAGES
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Verify-Portable.ps1') -Destination $publishRoot
     $docsRoot = Join-Path $publishRoot 'docs'
     New-Item -ItemType Directory -Path $docsRoot -Force | Out-Null

@@ -14,7 +14,12 @@ BuildOutput\DingLater-2.7.0-win-x64-portable.zip
 BuildOutput\SHA256SUMS.txt
 BuildOutput\package-files.json
 BuildOutput\Verify-Portable.ps1
+BuildOutput\LICENSE
+BuildOutput\THIRD-PARTY-NOTICES.md
+BuildOutput\licenses\
 ```
+
+ZIP 在生成 `package-files.json` 之前纳入 DingLater 的 MIT 许可证、第三方声明索引，以及已还原组件附带的许可和声明。随包分发时保留这些文件，详见 [第三方组件许可与声明](../THIRD-PARTY-NOTICES.md)。
 
 本机测试直接启动 `BuildOutput\DingLater.exe`，或双击仓库根目录的 `启动最新版本.cmd`。每次构建使用 `.tools` 下独立的临时目录并在结束后清理，同一个工作区的构建以文件锁串行执行。失败的构建不会先删除上一版 `BuildOutput`。如果旧程序仍在使用备份文件，脚本会保留备份并给出路径。
 
