@@ -1,0 +1,55 @@
+name: Publish DingLater v2.7.1
+on:
+  push:
+    branches: ['release-build/v2.7.1']
+permissions:
+  contents: write
+concurrency:
+  group: release-v2.7.1
+  cancel-in-progress: false
+jobs:
+  portable:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      RELEASE_SHA: dfd964eb1c477d92214a124db2937eec00cd5c75
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: dfd964eb1c477d92214a124db2937eec00cd5c75
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+      - name: Build and validate Windows portable release
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:RELEASE_SHA) { throw 'Unexpected source revision' }
+          ./scripts/Build-Portable.ps1 -Configuration Release -Version 2.7.1
+      - name: Stage assets, verify GitHub digests and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = $env:GITHUB_REPOSITORY
+          $zip = 'DingLater-2.7.1-win-x64-portable.zip'
+          $sums = 'SHA256SUMS.txt'
+          $checks = @{}
+          foreach ($file in @($zip, $sums)) {
+            $checks[$file] = 'sha256:' + (Get-FileHash "BuildOutput/$file" -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $line = (Get-Content -Raw "BuildOutput/$sums").Trim()
+          if ($line -cne ($checks[$zip].Substring(7) + ' *' + $zip)) { throw 'Checksum manifest mismatch' }
+          gh release create v2.7.1 "BuildOutput/$zip" "BuildOutput/$sums" --repo $repo --target $env:RELEASE_SHA --draft --title 'DingLater v2.7.1' --notes-file docs/releases/v2.7.1.md
+          if ($LASTEXITCODE -ne 0) { throw 'Could not stage release' }
+          $release = gh release view v2.7.1 --repo $repo --json assets,isDraft,targetCommitish | ConvertFrom-Json
+          if (-not $release.isDraft -or $release.targetCommitish -ne $env:RELEASE_SHA -or $release.assets.Count -ne 2) { throw 'Unexpected draft release' }
+          foreach ($file in $checks.Keys) {
+            $asset = @($release.assets | Where-Object name -eq $file)
+            if ($asset.Count -ne 1 -or $asset[0].digest -cne $checks[$file]) { throw "Asset digest mismatch for $file" }
+          }
+          gh release edit v2.7.1 --repo $repo --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Publication failed' }
