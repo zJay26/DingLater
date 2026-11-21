@@ -8,7 +8,7 @@
 
 把需要回复的消息先收好，在合适的时候再处理。
 
-[下载 Windows x64](https://github.com/zJay26/DingLater/releases/latest) · [查看界面](#界面预览) · [快速开始](#下载与运行) · [隐私与安全](docs/PRIVACY.md)
+[下载 Windows x64](https://github.com/zJay26/DingLater/releases/latest) · [查看界面](#界面预览) · [快速开始](#下载与运行) · [使用范围](#使用范围与免责声明) · [隐私与安全](docs/PRIVACY.md)
 
 [![Windows CI](https://github.com/zJay26/DingLater/actions/workflows/windows.yml/badge.svg)](https://github.com/zJay26/DingLater/actions/workflows/windows.yml)
 [![Release](https://img.shields.io/github/v/release/zJay26/DingLater?display_name=tag)](https://github.com/zJay26/DingLater/releases/latest)
@@ -20,6 +20,13 @@
 DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解析当前用户的钉钉 V3 本地数据库，自动收好新消息，让你集中查看、设置稍后提醒并标记处理完成。它不会打开钉钉会话或发送消息。
 
 > DingLater 的代码路径不会写入钉钉文件，也没有发送已读回执的网络或界面操作。发送方是否始终保持“未读”仍需用两个账号做最终验收，项目不会把静态保证描述成端到端保证。
+
+## 使用范围与免责声明
+
+- 仅限在本人设备上处理本人钉钉账号已接收的消息。请勿使用 DingLater 获取他人账号或设备上的数据，或未经授权收集、监控、披露他人信息。
+- DingLater 是独立开发的第三方工具，与钉钉及阿里巴巴无关联，未获其授权或背书。文档提及钉钉仅用于说明兼容性。
+- 使用公司账号前，请先核对公司关于第三方软件、聊天留存及保密的政策，并在需要时取得公司授权。
+- DingLater 按现状提供。在适用法律允许的范围内，使用者自行承担使用风险与后果。
 
 ## 界面预览
 
@@ -59,6 +66,8 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 > 当前适配 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式；首次启用只记录之后的新消息，不导入历史。版本与验收范围见[兼容性与验收](docs/COMPATIBILITY.md)。
 
 ## 下载与运行
+
+便携包自带第三方运行时。使用包内 Microsoft 组件须同意 [第三方许可声明](THIRD-PARTY-NOTICES.md) 列出的适用条款。
 
 普通用户只需要下面几步：
 
@@ -142,3 +151,5 @@ $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 - [便携发布](docs/DISTRIBUTION.md)
 
 参考实现与格式研究：[dingwave-V3](https://github.com/E2ern1ty/dingwave-V3)。DingLater 的 .NET 实现独立编写，不复制其应用代码。
+
+DingLater 自身代码按 [MIT 许可证](LICENSE) 提供。便携发布包附带第三方组件的许可及声明，见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
