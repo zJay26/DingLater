@@ -113,7 +113,10 @@ internal sealed class DingTalkMessageReader
                 remaining--;
                 lastPosition = reader.GetInt64(0);
                 var senderId = reader.IsDBNull(3) ? 0 : reader.GetInt64(3);
-                if (senderId == account.SelfUserId)
+                var sentBySelf = senderId == account.SelfUserId;
+                var atIds = reader.IsDBNull(8) ? string.Empty : reader.GetString(8);
+                var mentionsSelf = ContainsUserId(atIds, account.SelfUserId);
+                if (sentBySelf && !mentionsSelf)
                 {
                     continue;
                 }
@@ -126,13 +129,11 @@ internal sealed class DingTalkMessageReader
 
                 var conversationId = reader.GetString(1);
                 conversations.TryGetValue(conversationId, out var conversation);
-                var atIds = reader.IsDBNull(8) ? string.Empty : reader.GetString(8);
                 var contentType = reader.IsDBNull(5) ? 0 : reader.GetInt32(5);
                 var content = reader.IsDBNull(6) ? string.Empty : reader.GetString(6);
                 var attachments = reader.IsDBNull(9) ? string.Empty : reader.GetString(9);
                 var parsed = DingTalkMessageContentParser.Parse(contentType, content, attachments);
-                var isMention = ContainsUserId(atIds, account.SelfUserId)
-                                || ContainsBroadcastMention(atIds, content, parsed.Body);
+                var isMention = mentionsSelf || ContainsBroadcastMention(atIds, content, parsed.Body);
                 var isDirect = conversation?.Type == 1
                                || conversationId.Contains(':', StringComparison.Ordinal);
                 if (!isDirect && groupCaptureMode == GroupCaptureMode.MentionsOnly && !isMention)
@@ -147,7 +148,13 @@ internal sealed class DingTalkMessageReader
 
                 var sender = users.GetValueOrDefault(senderId);
                 var senderName = FirstNonEmpty(sender?.RealName, sender?.Nick, "未知发送者");
-                var conversationName = FirstNonEmpty(conversation?.Title, isDirect ? senderName : null, "未命名会话");
+                var conversationName = conversation?.Title;
+                if (isDirect && string.IsNullOrWhiteSpace(conversationName))
+                {
+                    conversationName = sentBySelf
+                        ? FindDirectPeerName(conversationId, account.SelfUserId, users)
+                        : senderName;
+                }
                 var messageAt = ReadTimestamp(reader, 4);
                 var kind = isMention ? MessageKind.Mention : parsed.Kind;
                 var messageId = reader.GetInt64(2);
@@ -157,7 +164,7 @@ internal sealed class DingTalkMessageReader
                 messages.Add(new CapturedMessage(
                     CaptureSourceKind.DingTalkDatabase,
                     capturedAt,
-                    conversationName,
+                    FirstNonEmpty(conversationName, null, "未命名会话"),
                     senderName,
                     parsed.Body,
                     kind,
@@ -222,6 +229,24 @@ internal sealed class DingTalkMessageReader
         }
 
         return result;
+    }
+
+    private static string? FindDirectPeerName(
+        string conversationId,
+        long selfUserId,
+        IReadOnlyDictionary<long, UserInfo> users)
+    {
+        var separator = conversationId.IndexOf(':');
+        if (separator <= 0
+            || !long.TryParse(conversationId.AsSpan(0, separator), NumberStyles.None, CultureInfo.InvariantCulture, out var first)
+            || !long.TryParse(conversationId.AsSpan(separator + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var second)
+            || (first != selfUserId && second != selfUserId))
+        {
+            return null;
+        }
+
+        var peer = users.GetValueOrDefault(first == selfUserId ? second : first);
+        return FirstNonEmpty(peer?.RealName, peer?.Nick, string.Empty);
     }
 
     private static async Task ValidateTableAsync(

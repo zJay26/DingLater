@@ -293,6 +293,53 @@ public sealed class DingTalkDatabaseTests
     }
 
     [TestMethod]
+    [DataRow(GroupCaptureMode.MentionsOnly)]
+    [DataRow(GroupCaptureMode.AllMessages)]
+    public async Task MessageReader_CapturesOnlyExplicitSelfMentionsFromOwnMessages(GroupCaptureMode groupCaptureMode)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var setup = connection.CreateCommand();
+        setup.CommandText = """
+            CREATE TABLE tbconversation (cid TEXT PRIMARY KEY, type INTEGER, title TEXT, status INTEGER);
+            CREATE TABLE tbuser_profile_v2 (uid INTEGER PRIMARY KEY, nick TEXT, realName TEXT);
+            CREATE TABLE tbmsg_005 (
+                primaryKey INTEGER PRIMARY KEY, cid TEXT, mid INTEGER, senderId INTEGER,
+                createdAt INTEGER, contentType INTEGER, content TEXT, recallStatus INTEGER,
+                atIds TEXT, attachments TEXT
+            );
+            INSERT INTO tbconversation VALUES ('100:200', 1, '', 1), ('group-1', 2, '测试群聊', 1);
+            INSERT INTO tbuser_profile_v2 VALUES (100, '本人', ''), (200, '测试机器人', '');
+            INSERT INTO tbmsg_005 VALUES
+                (1, '100:200', 1, 100, 1700000000001, 1, '{"text":"@本人 私聊自测"}', 0, '{"100":"本人"}', ''),
+                (2, '100:200', 2, 100, 1700000000002, 1, '{"text":"@本人 手打文字"}', 0, NULL, ''),
+                (3, '100:200', 3, 100, 1700000000003, 1, '{"text":"@机器人"}', 0, '{"200":"测试机器人"}', ''),
+                (4, 'group-1', 4, 100, 1700000000004, 1, '{"text":"@所有人"}', 0, '[0]', ''),
+                (5, 'group-1', 5, 100, 1700000000005, 1, '{"text":"@本人 群聊自测"}', 0, '[100]', ''),
+                (6, 'group-1', 6, 100, 1700000000006, 1, '{"text":"已撤回"}', 1, '[100]', '');
+            """;
+        await setup.ExecuteNonQueryAsync();
+
+        using var account = new DingTalkAccount(
+            "test", "test", "test-wal", "account", 100,
+            RandomNumberGenerator.GetBytes(16), DateTime.UtcNow, 1);
+        var result = await new DingTalkMessageReader().ReadNewAsync(
+            connection, account, new Dictionary<int, long> { [5] = 0 },
+            new Dictionary<int, long> { [5] = 6 }, groupCaptureMode,
+            DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.HasCount(2, result.Messages);
+        Assert.IsTrue(result.Messages.All(message => message.Kind == MessageKind.Mention && message.Sender == "本人"));
+        Assert.AreEqual("@本人 私聊自测", result.Messages[0].VisibleBody);
+        Assert.AreEqual("测试机器人", result.Messages[0].Conversation);
+        Assert.AreEqual(ConversationScope.Direct, result.Messages[0].ConversationScope);
+        Assert.AreEqual("@本人 群聊自测", result.Messages[1].VisibleBody);
+        Assert.AreEqual("测试群聊", result.Messages[1].Conversation);
+        Assert.AreEqual(ConversationScope.Group, result.Messages[1].ConversationScope);
+        Assert.AreEqual(6L, result.Checkpoints.Single().Position);
+    }
+
+    [TestMethod]
     public async Task LiveV3Snapshot_PassesIntegrityAndSchemaProbe_WhenExplicitlyEnabled()
     {
         if (!string.Equals(

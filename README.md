@@ -63,7 +63,7 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 | **已处理** | 回复后自行标记完成，清楚区分尚未处理的消息。 |
 | **本地保存** | 消息留在当前 Windows 用户的本地加密存储中；没有钉钉网络连接、云同步或遥测。 |
 
-> 当前适配 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式；首次启用只记录之后的新消息，不导入历史。版本与验收范围见[兼容性与验收](docs/COMPATIBILITY.md)。
+> 已在 Windows x64 钉钉 `8.3.45.260720005` 和 `9.0.10.261117008` 上验证 V3 捕获。首次启用从之后的新消息开始记录。[兼容性与验收](docs/COMPATIBILITY.md)
 
 ## 下载与运行
 
@@ -72,20 +72,20 @@ DingLater 是一个 Windows 本地“稍后回复箱”。它以只读方式解�
 普通用户只需要下面几步：
 
 1. 打开 [GitHub Releases](https://github.com/zJay26/DingLater/releases)，进入最新版本。
-2. 下载名称类似 `DingLater-2.7.1-win-x64-portable.zip` 的 ZIP 文件。
+2. 下载名称类似 `DingLater-2.7.2-win-x64-portable.zip` 的 ZIP 文件。
 3. 把 ZIP **完整解压到一个新文件夹**，等待解压结束，然后双击里面的 `DingLater.exe`。不能直接在压缩包内运行。
 4. 第一次启动时，允许 DingLater 只读读取本机钉钉数据；它只会从此刻开始记录新消息。
 
 便携版不用安装，也不需要管理员权限。最好先用 `SHA256SUMS.txt` 校验下载文件，再运行程序。Windows 如果弹出 SmartScreen 提示，这是因为程序暂未签名。
 
-v2.7.1 升级 Windows App SDK，便携包随附项目许可证和第三方许可声明。详见[本次更新说明](docs/releases/v2.7.1.md)。v2.4.0 及以上用户可在“设置 → 软件更新”中更新，更早版本请手动下载并完整解压。
+v2.7.2 支持捕获自己发出的 `@自己` 消息，可在机器人私聊中自测。v2.4.0 及以上用户可在“设置 → 软件更新”中更新，更早版本请手动下载并完整解压。[本次更新说明](docs/releases/v2.7.2.md)
 
 如果无法启动，在解压目录打开 PowerShell，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\Verify-Portable.ps1`。它会逐文件检查完整性，报告缺失或损坏的依赖；需要保留 ZIP 内全部文件，不能只复制 EXE。
 
 校验方法：把 ZIP 和 `SHA256SUMS.txt` 放在同一个文件夹，在该文件夹打开 PowerShell，运行下面的命令（文件名不同时请替换第一行）：
 
 ```powershell
-$zip = ".\DingLater-2.7.1-win-x64-portable.zip"
+$zip = ".\DingLater-2.7.2-win-x64-portable.zip"
 $expected = (Get-Content .\SHA256SUMS.txt).Trim().Split()[0].ToLower()
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校验失败，请重新下载" }
@@ -100,7 +100,7 @@ if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校�
 5. 以 128 个 `tbmsg_000`–`tbmsg_127` 表的自增 `primaryKey` 作为增量进度。
 6. DingLater 消息和 checkpoint 在同一个事务中提交，崩溃重放通过 HMAC 来源指纹去重。
 
-第一次启用只记录当前 128 个分表的最大 `primaryKey`，不会导入已有历史。私聊默认全部捕获；群聊默认捕获 `@我` 和 `@所有人`，可在设置中改为全部群消息。
+第一次启用以当前 128 个分表的最大 `primaryKey` 为捕获起点。收到的私聊消息会进入待处理，群聊默认收取 `@我` 和 `@所有人`，可在设置中改为全部。自己发出的消息仅在钉钉的 `@` 选择器中选中了自己的账号时才会进入待处理。
 
 ## 功能与边界
 
@@ -122,7 +122,7 @@ if ($actual -eq $expected) { "校验通过，可以解压运行" } else { "校�
 - 默认下载到 `%USERPROFILE%\Downloads\DingLater`，每次使用独立子目录保存 ZIP 与完整解压文件。更新前备份旧程序到程序目录下的 `.dinglater-backup`，保留原程序路径、快捷方式、登录启动项和本地消息设置；应用文件替换失败会尝试恢复旧程序。
 - 不连接钉钉网络，没有机器人/OpenAPI、遥测或云同步；更新请求不包含消息、账号、诊断或设备标识。
 
-当前只保证 Windows x64 上钉钉 `8.3.45.260720005` 的 V3 数据格式。版本变化但结构探测仍完全匹配时可以继续运行；加密、WAL 或 schema 任一检查失败都会停止捕获并显示诊断，不会切换到注入、进程内存读取或窗口自动化。
+每次捕获均按 V3 格式进行探测。加密、WAL 和 schema 检查均通过时继续运行，检查失败时停止捕获并显示诊断。[兼容性与验收](docs/COMPATIBILITY.md)
 
 随 Windows 登录启动使用当前用户 `HKCU\...\Run` 中唯一的 `DingLater` 值；关闭设置会删除该值。卸载时退出应用并删除解压目录即可；本地数据位于 `%LOCALAPPDATA%\DingLater`，可先在应用设置中选择“删除全部本地消息”。
 
@@ -138,7 +138,7 @@ $env:DOTNET_CLI_HOME="$PWD\.tools\cli-home"
 $env:NUGET_PACKAGES="$PWD\.tools\nuget-packages"
 .\.tools\dotnet\dotnet.exe restore .\DingLater.slnx --locked-mode
 .\.tools\dotnet\dotnet.exe test .\DingLater.slnx -c Release
-.\scripts\Build-Portable.ps1 -Version 2.7.1
+.\scripts\Build-Portable.ps1 -Version 2.7.2
 ```
 
 最新本地测试版始终位于 `BuildOutput\DingLater.exe`，也可以直接双击仓库根目录的 `启动最新版本.cmd`。每次执行构建脚本都会覆盖这个固定目录，不再创建按日期变化的发布目录；ZIP 和 `SHA256SUMS.txt` 也放在同一目录。只有明确设置 `DINGLATER_DEMO=1` 或传入 `--demo` 的 Debug 运行才使用合成消息；普通 Debug/Release 都使用真实只读 V3 来源，Release 会忽略这两个测试入口。
